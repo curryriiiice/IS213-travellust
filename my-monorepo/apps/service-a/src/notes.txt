@@ -1,0 +1,27 @@
+create a venv if u want to install dependencies for each service
+
+cd apps/service-a
+python3 -m venv venv
+source venv/bin/activate        # Mac/Linux
+# or
+venv\Scripts\activate           # Windows
+
+pip install flask               # or wtv uw install 
+
+pip freeze > requirements.txt
+```
+
+Your structure will look like:
+```
+/apps
+└── /service-a
+    ├── /src
+    │   └── app.py
+    ├── /venv              # ← don't commit this
+    ├── requirements.txt   # ← commit this
+    └── Dockerfile
+```
+
+**Important:** Add `venv/` to your `.gitignore` at the root:
+```
+apps/service-a/venv/
