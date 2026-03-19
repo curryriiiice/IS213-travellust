@@ -4,6 +4,7 @@ from trips_atomic.supabase_client import supabase
 
 app = Flask(__name__)
 
+
 @app.route("/api/<table>", methods=["GET"])
 def get_all(table):
     """GET all records from a table."""

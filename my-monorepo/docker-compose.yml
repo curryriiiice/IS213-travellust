@@ -1,0 +1,11 @@
+services:
+  trips_atomic:
+    build:
+      context: ./apps/trips_atomic
+      dockerfile: Dockerfile
+    ports:
+      - '5001:5000'
+    environment:
+      - FLASK_DEBUG=1
+    env_file:
+      - apps/trips_atomic/.env
