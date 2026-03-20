@@ -3,6 +3,30 @@ from attractions.app import create_app
 
 class FakeRepository:
     def __init__(self):
+        self.catalog_records = {
+            "aaaaaaa1-1111-1111-1111-111111111111": {
+                "catalog_attraction_id": "aaaaaaa1-1111-1111-1111-111111111111",
+                "name": "Gardens by the Bay",
+                "location": "Singapore",
+                "gmaps_link": "https://maps.google.com/example",
+                "cost": "32.50",
+                "category": "Nature",
+                "description": "Iconic waterfront gardens",
+                "created_at": "2026-03-19T10:00:00Z",
+                "updated_at": "2026-03-19T10:00:00Z",
+            },
+            "bbbbbbb2-2222-2222-2222-222222222222": {
+                "catalog_attraction_id": "bbbbbbb2-2222-2222-2222-222222222222",
+                "name": "Universal Studios Singapore",
+                "location": "Sentosa",
+                "gmaps_link": "https://maps.google.com/uss",
+                "cost": "88.00",
+                "category": "Theme Park",
+                "description": "Movie-themed amusement park",
+                "created_at": "2026-03-19T11:00:00Z",
+                "updated_at": "2026-03-19T11:00:00Z",
+            },
+        }
         self.records = {
             "11111111-1111-1111-1111-111111111111": {
                 "attraction_id": "11111111-1111-1111-1111-111111111111",
@@ -45,6 +69,21 @@ class FakeRepository:
     def list_attractions(self):
         return list(self.records.values())
 
+    def list_catalog_attractions(self, search=None):
+        records = list(self.catalog_records.values())
+        if not search:
+            return records
+        search_lower = search.lower()
+        return [
+            record
+            for record in records
+            if search_lower in record["name"].lower()
+            or search_lower in (record.get("location") or "").lower()
+        ]
+
+    def get_catalog_attraction(self, catalog_attraction_id):
+        return self.catalog_records.get(catalog_attraction_id)
+
     def list_attractions_by_trip(self, trip_id):
         return [
             record for record in self.records.values() if record["trip_id"] == trip_id
@@ -56,6 +95,24 @@ class FakeRepository:
     def create_attraction(self, payload):
         next_id = "33333333-3333-3333-3333-333333333333"
         record = {"attraction_id": next_id, **payload}
+        self.records[next_id] = record
+        return record
+
+    def create_attraction_from_catalog(self, trip_id, catalog_attraction_id, payload=None):
+        catalog_record = self.get_catalog_attraction(catalog_attraction_id)
+        if catalog_record is None:
+            return None
+        next_id = "77777777-7777-7777-7777-777777777777"
+        record = {
+            "attraction_id": next_id,
+            "trip_id": trip_id,
+            "catalog_attraction_id": catalog_attraction_id,
+            "name": catalog_record["name"],
+            "location": catalog_record["location"],
+            "gmaps_link": catalog_record["gmaps_link"],
+            "cost": catalog_record["cost"],
+            **(payload or {}),
+        }
         self.records[next_id] = record
         return record
 
@@ -97,6 +154,48 @@ def test_list_attractions():
         "Singapore Flyer",
         "Tokyo Tower",
     }
+
+
+def test_list_catalog_attractions():
+    app = create_app(repository=FakeRepository())
+    client = app.test_client()
+
+    response = client.get("/api/catalog/attractions")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["count"] == 2
+    assert {record["name"] for record in data["data"]} == {
+        "Gardens by the Bay",
+        "Universal Studios Singapore",
+    }
+
+
+def test_search_catalog_attractions():
+    app = create_app(repository=FakeRepository())
+    client = app.test_client()
+
+    response = client.get("/api/catalog/attractions?search=sentosa")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["count"] == 1
+    assert data["data"][0]["name"] == "Universal Studios Singapore"
+
+
+def test_get_catalog_attraction_by_id():
+    app = create_app(repository=FakeRepository())
+    client = app.test_client()
+
+    response = client.get(
+        "/api/catalog/attractions/aaaaaaa1-1111-1111-1111-111111111111"
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.get_json()["data"]["catalog_attraction_id"]
+        == "aaaaaaa1-1111-1111-1111-111111111111"
+    )
 
 
 def test_list_attractions_by_trip_id():
@@ -146,6 +245,64 @@ def test_create_attraction():
 
     assert response.status_code == 201
     assert response.get_json()["data"]["name"] == "Universal Studios Singapore"
+
+
+def test_create_attraction_from_catalog():
+    app = create_app(repository=FakeRepository())
+    client = app.test_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog"
+        "?catalog_attraction_id=aaaaaaa1-1111-1111-1111-111111111111",
+        json={"visit_time": "2026-03-21T12:00:00Z", "duration_minutes": 180},
+    )
+
+    assert response.status_code == 201
+    data = response.get_json()["data"]
+    assert data["trip_id"] == "22222222-2222-2222-2222-222222222222"
+    assert data["catalog_attraction_id"] == "aaaaaaa1-1111-1111-1111-111111111111"
+    assert data["name"] == "Gardens by the Bay"
+
+
+def test_create_attraction_from_catalog_requires_catalog_id():
+    app = create_app(repository=FakeRepository())
+    client = app.test_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog",
+        json={"visit_time": "2026-03-21T12:00:00Z"},
+    )
+
+    assert response.status_code == 400
+    assert "catalog_attraction_id" in response.get_json()["error"]
+
+
+def test_create_attraction_from_catalog_rejects_invalid_fields():
+    app = create_app(repository=FakeRepository())
+    client = app.test_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog"
+        "?catalog_attraction_id=aaaaaaa1-1111-1111-1111-111111111111",
+        json={"name": "Do not allow override"},
+    )
+
+    assert response.status_code == 400
+    assert "cannot be set" in response.get_json()["error"]
+
+
+def test_create_attraction_from_catalog_not_found():
+    app = create_app(repository=FakeRepository())
+    client = app.test_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog"
+        "?catalog_attraction_id=missing",
+        json={"visit_time": "2026-03-21T12:00:00Z"},
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Catalog attraction not found"
 
 
 def test_create_requires_trip_id_and_name():

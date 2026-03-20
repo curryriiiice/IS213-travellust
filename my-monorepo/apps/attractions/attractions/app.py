@@ -17,6 +17,7 @@ MUTABLE_FIELDS = {
     "duration_minutes",
     "cost",
 }
+CATALOG_COPY_OPTIONAL_FIELDS = {"visit_time", "duration_minutes", "cost"}
 
 
 def _validate_payload(payload: object) -> dict:
@@ -57,6 +58,20 @@ def _validate_update_payload(payload: dict) -> dict:
     return payload
 
 
+def _validate_catalog_copy_payload(payload: object) -> dict:
+    if payload is None:
+        return {}
+    payload = _validate_payload(payload)
+    invalid_fields = sorted(set(payload) - CATALOG_COPY_OPTIONAL_FIELDS)
+    if invalid_fields:
+        invalid_fields_str = ", ".join(invalid_fields)
+        raise ValueError(
+            "These fields cannot be set when adding from the catalog: "
+            f"{invalid_fields_str}."
+        )
+    return payload
+
+
 def create_app(repository: SupabaseAttractionRepository | None = None) -> Flask:
     app = Flask(__name__)
     repo = repository or SupabaseAttractionRepository()
@@ -75,6 +90,22 @@ def create_app(repository: SupabaseAttractionRepository | None = None) -> Flask:
         attractions = repo.list_attractions_by_trip(trip_id)
         return jsonify({"count": len(attractions), "data": attractions}), HTTPStatus.OK
 
+    @app.get("/api/catalog/attractions")
+    def list_catalog_attractions():
+        search = request.args.get("search", type=str)
+        attractions = repo.list_catalog_attractions(search=search)
+        return jsonify({"count": len(attractions), "data": attractions}), HTTPStatus.OK
+
+    @app.get("/api/catalog/attractions/<catalog_attraction_id>")
+    def get_catalog_attraction(catalog_attraction_id: str):
+        attraction = repo.get_catalog_attraction(catalog_attraction_id)
+        if attraction is None:
+            return (
+                jsonify({"error": "Catalog attraction not found"}),
+                HTTPStatus.NOT_FOUND,
+            )
+        return jsonify({"data": attraction}), HTTPStatus.OK
+
     @app.get("/api/attractions/<attraction_id>")
     def get_attraction(attraction_id: str):
         attraction = repo.get_attraction(attraction_id)
@@ -92,6 +123,30 @@ def create_app(repository: SupabaseAttractionRepository | None = None) -> Flask:
             return jsonify({"error": str(exc)}), HTTPStatus.BAD_REQUEST
 
         attraction = repo.create_attraction(payload)
+        return jsonify({"data": attraction}), HTTPStatus.CREATED
+
+    @app.post("/api/trips/<trip_id>/attractions/from-catalog")
+    def create_attraction_from_catalog(trip_id: str):
+        try:
+            payload = _validate_catalog_copy_payload(request.get_json(silent=True))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), HTTPStatus.BAD_REQUEST
+
+        catalog_attraction_id = request.args.get("catalog_attraction_id", type=str)
+        if not catalog_attraction_id:
+            return (
+                jsonify({"error": "catalog_attraction_id query parameter is required"}),
+                HTTPStatus.BAD_REQUEST,
+            )
+
+        attraction = repo.create_attraction_from_catalog(
+            trip_id, catalog_attraction_id, payload
+        )
+        if attraction is None:
+            return (
+                jsonify({"error": "Catalog attraction not found"}),
+                HTTPStatus.NOT_FOUND,
+            )
         return jsonify({"data": attraction}), HTTPStatus.CREATED
 
     @app.put("/api/attractions/<attraction_id>")
