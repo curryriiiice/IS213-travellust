@@ -44,3 +44,8 @@ Thumbs.db
 # for ignoring dependencies
 /venv
 venv/
+
+# local environment files
+.env
+*.env
+!.env.example
