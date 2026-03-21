@@ -1,6 +1,22 @@
 """Example usage of Saved Hotels Service (CRUD operations only)."""
 from datetime import datetime
-from saved_hotels import saved_hotels_service
+import sys
+from pathlib import Path
+
+# Handle imports for different execution locations
+try:
+    from saved_hotels import saved_hotels_service
+except ImportError:
+    # Try relative import when running from examples folder
+    try:
+        from ..saved_hotels import saved_hotels_service
+    except ImportError:
+        # Try absolute import when running from examples folder
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from saved_hotels import saved_hotels_service
+        except ImportError:
+            raise ImportError("Could not import saved_hotels_service. Make sure you're running from the correct directory.")
 
 
 # ============================================

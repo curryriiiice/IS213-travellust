@@ -1,8 +1,21 @@
 """Example usage of Hotel Management Composite Service."""
+import sys
+from pathlib import Path
+
+# Handle imports for different execution locations
 try:
     from hotel_management_service import hotel_management_service
 except ImportError:
-    from hotel_management.hotel_management_service import hotel_management_service
+    # Try relative import when running from examples folder
+    try:
+        from ..hotel_management_service import hotel_management_service
+    except ImportError:
+        # Try absolute import when running from examples folder
+        try:
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from hotel_management_service import hotel_management_service
+        except ImportError:
+            raise ImportError("Could not import hotel_management_service. Make sure you're running from the correct directory.")
 
 
 def example_search_and_save_hotel():
