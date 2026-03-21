@@ -37,7 +37,7 @@ class SavedHotelsService:
         external_link: Optional[str] = None,
         link: Optional[str] = None,
         overall_rating: Optional[float] = None,
-        total_cost: Optional[float] = None,
+        rate_per_night: Optional[float] = None,
         lat: Optional[float] = None,
         long: Optional[float] = None,
         amenities: Optional[List[str]] = None,
@@ -54,7 +54,7 @@ class SavedHotelsService:
             external_link: External booking link
             link: Internal link
             overall_rating: Overall rating (0-5)
-            total_cost: Total cost for the stay
+            rate_per_night: Rate per night
             lat: Latitude
             long: Longitude
             amenities: List of amenities
@@ -77,8 +77,8 @@ class SavedHotelsService:
             hotel_data["link"] = link
         if overall_rating is not None:
             hotel_data["overall_rating"] = overall_rating
-        if total_cost is not None:
-            hotel_data["total_cost"] = total_cost
+        if rate_per_night is not None:
+            hotel_data["rate_per_night"] = rate_per_night
         if lat is not None:
             hotel_data["lat"] = lat
         if long is not None:
@@ -147,7 +147,7 @@ class SavedHotelsService:
         external_link: Optional[str] = None,
         link: Optional[str] = None,
         overall_rating: Optional[float] = None,
-        total_cost: Optional[float] = None,
+        rate_per_night: Optional[float] = None,
         lat: Optional[float] = None,
         long: Optional[float] = None,
         amenities: Optional[List[str]] = None,
@@ -164,7 +164,7 @@ class SavedHotelsService:
             external_link: Updated external link
             link: Updated internal link
             overall_rating: Updated rating
-            total_cost: Updated total cost
+            rate_per_night: Updated rate per night
             lat: Updated latitude
             long: Updated longitude
             amenities: Updated list of amenities
@@ -188,8 +188,8 @@ class SavedHotelsService:
             update_data["link"] = link
         if overall_rating is not None:
             update_data["overall_rating"] = overall_rating
-        if total_cost is not None:
-            update_data["total_cost"] = total_cost
+        if rate_per_night is not None:
+            update_data["rate_per_night"] = rate_per_night
         if lat is not None:
             update_data["lat"] = lat
         if long is not None:

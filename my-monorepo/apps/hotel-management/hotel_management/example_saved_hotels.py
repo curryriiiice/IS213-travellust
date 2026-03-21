@@ -29,7 +29,7 @@ def example_create_hotel():
         external_link="https://example.com/booking",
         link="/hotels/marina-bay-sands",
         overall_rating=4.5,
-        total_cost=850.00,
+        rate_per_night=425.00,
         lat=1.2836,
         long=103.8607,
         amenities=["Free WiFi", "Pool", "Spa", "Restaurant", "Gym"],
@@ -63,7 +63,7 @@ def example_get_hotels_by_trip(trip_id: str):
         print(f"  Check-in: {hotel.get('datetime_check_in')}")
         print(f"  Check-out: {hotel.get('datetime_check_out')}")
         print(f"  Rating: {hotel.get('overall_rating')}")
-        print(f"  Cost: ${hotel.get('total_cost')}")
+        print(f"  Cost: ${hotel.get('rate_per_night')}")
     return hotels
 
 
@@ -79,7 +79,7 @@ def example_get_all_hotels():
         print(f"  Check-in: {hotel.get('datetime_check_in')}")
         print(f"  Check-out: {hotel.get('datetime_check_out')}")
         print(f"  Rating: {hotel.get('overall_rating')}")
-        print(f"  Cost: ${hotel.get('total_cost')}")
+        print(f"  Cost: ${hotel.get('rate_per_night')}")
     return hotels
 
 
@@ -88,7 +88,7 @@ def example_update_hotel(hotel_id: str):
     updated_hotel = saved_hotels_service.update_hotel(
         hotel_id=hotel_id,
         name="Marina Bay Sands - Updated",
-        total_cost=900.00,
+        rate_per_night=900.00,
         overall_rating=4.8,
         amenities=["Free WiFi", "Pool", "Spa", "Restaurant", "Gym", "Concierge"],
     )
@@ -118,7 +118,7 @@ def example_create_multiple_hotels():
             "description": "Luxury hotel with infinity pool",
             "check_in": datetime(2026, 5, 15, 14, 0, 0),
             "check_out": datetime(2026, 5, 17, 11, 0, 0),
-            "total_cost": 850.00,
+            "rate_per_night": 850.00,
             "overall_rating": 4.5,
             "lat": 1.2836,
             "long": 103.8607,
@@ -129,7 +129,7 @@ def example_create_multiple_hotels():
             "description": "Historic luxury hotel",
             "check_in": datetime(2026, 5, 20, 15, 0, 0),
             "check_out": datetime(2026, 5, 22, 12, 0, 0),
-            "total_cost": 1200.00,
+            "rate_per_night": 1200.00,
             "overall_rating": 4.9,
             "lat": 1.2959,
             "long": 103.8517,
@@ -140,7 +140,7 @@ def example_create_multiple_hotels():
             "description": "Waterfront luxury hotel",
             "check_in": datetime(2026, 6, 1, 14, 0, 0),
             "check_out": datetime(2026, 6, 3, 11, 0, 0),
-            "total_cost": 1500.00,
+            "rate_per_night": 1500.00,
             "overall_rating": 4.7,
             "lat": 1.2857,
             "long": 103.8525,
@@ -160,7 +160,7 @@ def example_create_multiple_hotels():
             datetime_check_in=hotel_data["check_in"],
             datetime_check_out=hotel_data["check_out"],
             trip_id=trip_id,
-            total_cost=hotel_data["total_cost"],
+            rate_per_night=hotel_data["rate_per_night"],
             overall_rating=hotel_data["overall_rating"],
             lat=hotel_data["lat"],
             long=hotel_data["long"],
