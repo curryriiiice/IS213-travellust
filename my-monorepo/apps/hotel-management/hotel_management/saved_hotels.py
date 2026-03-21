@@ -25,7 +25,7 @@ class SavedHotelsService:
 
     def __init__(self):
         """Initialize the Saved Hotels Service."""
-        self.table_name = "saved_hotels"
+        self.table_name = "hotel"
 
     def create_hotel(
         self,
