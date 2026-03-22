@@ -41,5 +41,7 @@ Thumbs.db
 /venv
 venv/
 
-# Environment variables
+# local environment files
 .env
+*.env
+!.env.example
