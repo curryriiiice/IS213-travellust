@@ -19,3 +19,13 @@ services:
       - FLASK_DEBUG=1
     env_file:
       - apps/attractions/.env
+  booked_tickets:
+    build:
+      context: ./apps/booked_tickets
+      dockerfile: Dockerfile
+    ports:
+      - '5006:5000'
+    environment:
+      - FLASK_DEBUG=1
+    env_file:
+      - apps/booked_tickets/.env
