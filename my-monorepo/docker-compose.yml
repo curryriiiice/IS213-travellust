@@ -1,4 +1,86 @@
 services:
+  flight-search-wrapper:
+    build:
+      context: ./apps/flight-search-wrapper
+      dockerfile: Dockerfile
+    container_name: flight-search-wrapper
+    ports:
+      - "5003:5000"
+    environment:
+      - FLIGHTAPI_KEY=${FLIGHTAPI_KEY:-69bf60ca8304b92f177b00de}
+      - FLIGHTAPI_BASE_URL=${FLIGHTAPI_BASE_URL:-https://api.flightapi.io}
+      - FLIGHTAPI_DEFAULT_CURRENCY=${FLIGHTAPI_DEFAULT_CURRENCY:-USD}
+      - FLIGHTAPI_DEFAULT_CABIN_CLASS=${FLIGHTAPI_DEFAULT_CABIN_CLASS:-Economy}
+      - FLIGHTAPI_DEFAULT_ADULTS=${FLIGHTAPI_DEFAULT_ADULTS:-1}
+      - FLIGHTAPI_DEFAULT_CHILDREN=${FLIGHTAPI_DEFAULT_CHILDREN:-0}
+      - FLIGHTAPI_DEFAULT_INFANTS=${FLIGHTAPI_DEFAULT_INFANTS:-0}
+      - USD_TO_SGD_RATE=${USD_TO_SGD_RATE:-1.34}
+      - FLASK_PORT=5000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - flight-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  saved-flights:
+    build:
+      context: ./apps/saved-flights
+      dockerfile: Dockerfile
+    container_name: saved-flights
+    ports:
+      - "5004:5000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - FLASK_PORT=5000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - flight-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  flight-management:
+    build:
+      context: ./apps/flight-management
+      dockerfile: Dockerfile
+    container_name: flight-management
+    ports:
+      - "5005:5000"
+    environment:
+      - SEARCH_WRAPPER_HOST=flight-search-wrapper
+      - SEARCH_WRAPPER_PORT=5000
+      - SAVED_FLIGHTS_HOST=saved-flights
+      - SAVED_FLIGHTS_PORT=5000
+      - FLASK_PORT=5000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - flight-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      flight-search-wrapper:
+        condition: service_healthy
+      saved-flights:
+        condition: service_healthy
+
+networks:
+  flight-network:
+    driver: bridge
   trips_atomic:
     build:
       context: ./apps/trips_atomic
