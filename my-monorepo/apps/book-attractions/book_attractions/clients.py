@@ -36,18 +36,6 @@ class AttractionsClient:
         response = self._request("GET", f"/api/attractions/{attraction_id}")
         return response["data"] if response else None
 
-    def create_from_catalog(
-        self, trip_id: str, catalog_attraction_id: str, payload: dict
-    ) -> dict | None:
-        response = self._request(
-            "POST",
-            "/api/trips/"
-            f"{trip_id}/attractions/from-catalog"
-            f"?catalog_attraction_id={catalog_attraction_id}",
-            json=payload,
-        )
-        return response["data"] if response else None
-
 
 class BookedTicketsClient:
     def __init__(self, base_url: str | None = None, timeout: float = 10.0):
@@ -70,33 +58,22 @@ class BookedTicketsClient:
 
 
 class TripsClient:
-    def __init__(
-        self,
-        trip_membership_url_template: str | None = None,
-        timeout: float = 10.0,
-    ):
-        self.trip_membership_url_template = trip_membership_url_template or os.getenv(
-            "TRIPS_TRIP_MEMBERSHIP_URL_TEMPLATE", ""
+    def __init__(self, trip_url_template: str | None = None, timeout: float = 10.0):
+        self.trip_url_template = trip_url_template or os.getenv(
+            "TRIPS_GET_TRIP_URL_TEMPLATE", ""
         )
         self.timeout = timeout
 
-    def user_belongs_to_trip(self, trip_id: str, user_id: str | int) -> bool:
-        if not self.trip_membership_url_template:
-            raise HttpError("TRIPS_TRIP_MEMBERSHIP_URL_TEMPLATE is not configured.")
-        url = self.trip_membership_url_template.format(trip_id=trip_id, user_id=user_id)
+    def get_trip(self, trip_id: str) -> dict | None:
+        if not self.trip_url_template:
+            raise HttpError("TRIPS_GET_TRIP_URL_TEMPLATE is not configured.")
+        url = self.trip_url_template.format(trip_id=trip_id)
         response = requests.get(url, timeout=self.timeout)
         if response.status_code == 404:
-            return False
+            return None
         if response.status_code >= 400:
             raise HttpError(f"Trips service error: {response.text}")
         data = response.json()
-        if isinstance(data, dict):
-            if "data" in data:
-                data = data["data"]
-            if isinstance(data, dict):
-                return bool(data)
-            if isinstance(data, list):
-                return len(data) > 0
-            if isinstance(data, bool):
-                return data
-        return bool(data)
+        if isinstance(data, dict) and "data" in data:
+            return data["data"]
+        return data
