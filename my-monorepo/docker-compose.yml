@@ -78,9 +78,6 @@ services:
       saved-flights:
         condition: service_healthy
 
-networks:
-  flight-network:
-    driver: bridge
   trips_atomic:
     build:
       context: ./apps/trips_atomic
@@ -91,6 +88,7 @@ networks:
       - FLASK_DEBUG=1
     env_file:
       - apps/trips_atomic/.env
+
   attractions:
     build:
       context: ./apps/attractions
@@ -101,6 +99,7 @@ networks:
       - FLASK_DEBUG=1
     env_file:
       - apps/attractions/.env
+
   hotel-search-wrapper:
     build:
       context: ./apps/hotel-management
@@ -112,6 +111,7 @@ networks:
     env_file:
       - apps/hotel-management/.env
     command: ["python", "-m", "flask", "--app", "hotel_management.hotel_search_wrapper_app", "run", "--host=0.0.0.0"]
+
   saved-hotels:
     build:
       context: ./apps/hotel-management
@@ -123,6 +123,7 @@ networks:
     env_file:
       - apps/hotel-management/.env
     command: ["python", "-m", "flask", "--app", "hotel_management.saved_hotels_app", "run", "--host=0.0.0.0"]
+
   hotel-management:
     build:
       context: ./apps/hotel-management
@@ -134,6 +135,7 @@ networks:
     env_file:
       - apps/hotel-management/.env
     command: ["python", "-m", "flask", "--app", "hotel_management.hotel_management_app", "run", "--host=0.0.0.0"]
+
   booked_tickets:
     build:
       context: ./apps/booked_tickets
@@ -144,3 +146,18 @@ networks:
       - FLASK_DEBUG=1
     env_file:
       - apps/booked_tickets/.env
+
+  book-attractions:
+    build:
+      context: ./apps/book-attractions
+      dockerfile: Dockerfile
+    ports:
+      - '5010:5000'
+    environment:
+      - FLASK_DEBUG=1
+    env_file:
+      - apps/book-attractions/.env
+
+networks:
+  flight-network:
+    driver: bridge
