@@ -1,5 +1,4 @@
 """Hotel Management Composite Microservice - Orchestrator between search wrapper and saved hotels."""
-import os
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -27,38 +26,31 @@ class HotelManagementService:
         self.search_service = hotel_search_service
         self.saved_hotels_service = saved_hotels_service
 
-    def search_and_save_hotel(
+    def search_hotels(
         self,
         query: str,
         check_in_date: str,
         check_out_date: str,
-        trip_id: str,
         adults: int = 2,
         children: int = 0,
         currency: str = "SGD",
-        gl: str = "sg",
         hl: str = "en",
         sort_by: Optional[int] = None,
         rating: Optional[int] = None,
-        save_to_database: bool = True,
     ) -> Dict[str, Any]:
         """
-        Search for hotels and optionally save the first result to the database.
+        Search for hotels without saving to the database.
 
-        This orchestrator function:
-        1. Calls the hotel_search_wrapper to get search results
-        2. Transforms/filters the search results to match saved_hotels schema
-        3. Saves the hotel to the database if save_to_database is True
+        This function only searches using the hotel_search_wrapper
+        and returns the raw search results for suggestions or custom queries.
 
         Args:
-            query: Search query for hotels (e.g., "Bali Resorts")
+            query: Search query for hotels (e.g., "hotels near Singapore")
             check_in_date: Check-in date in YYYY-MM-DD format
             check_out_date: Check-out date in YYYY-MM-DD format
-            trip_id: Trip UUID (required for saving to database)
             adults: Number of adults (default: 2)
             children: Number of children (default: 0)
             currency: Currency for prices (default: "SGD")
-            gl: Two-letter country code (default: "sg" for Singapore)
             hl: Language code (default: "en")
             sort_by: Sort option (optional)
                 - 3: Lowest price
@@ -68,17 +60,14 @@ class HotelManagementService:
                 - 7: 3.5+
                 - 8: 4.0+
                 - 9: 4.5+
-            save_to_database: Whether to save the hotel to database (default: True)
 
         Returns:
             Dictionary containing:
             - search_results: Raw search results from SerpApi
-            - transformed_hotel: Hotel data transformed for saved_hotels schema
-            - saved_hotel: Hotel saved to database (if save_to_database=True)
             - status: Operation status
         """
         try:
-            # Step 1: Search for hotels using the wrapper service
+            # Search for hotels using wrapper service
             search_results = self.search_service.search_hotels(
                 query=query,
                 check_in_date=check_in_date,
@@ -86,40 +75,93 @@ class HotelManagementService:
                 adults=adults,
                 children=children,
                 currency=currency,
-                gl=gl,
                 hl=hl,
                 sort_by=sort_by,
                 rating=rating,
             )
 
-            # Step 2: Transform/filter search results to match saved_hotels schema
-            transformed_hotel = self._transform_search_result_to_saved_hotel(
-                search_result=search_results,
-                trip_id=trip_id,
-                check_in_date=check_in_date,
-                check_out_date=check_out_date,
-            )
-
-            # Step 3: Save to database if requested
-            saved_hotel = None
-            if save_to_database and transformed_hotel:
-                saved_hotel = self._save_hotel_to_database(transformed_hotel)
-
             return {
                 "search_results": search_results,
-                "transformed_hotel": transformed_hotel,
-                "saved_hotel": saved_hotel,
                 "status": "success",
             }
 
         except Exception as e:
             return {
                 "search_results": None,
-                "transformed_hotel": None,
+                "status": "error",
+                "error": str(e),
+            }
+
+    def save_hotel_to_database(
+        self,
+        uid: str,
+        trip_id: str,
+        hotel_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Save a selected hotel to the database.
+
+        This function takes hotel details that were retrieved from the search endpoint
+        and saves them to the database using the saved_hotels service.
+
+        Args:
+            uid: User ID who is saving the hotel
+            trip_id: Trip ID to associate the hotel with
+            hotel_data: Hotel details (name, dates, rates, amenities, photos, etc.)
+
+        Returns:
+            Dictionary containing:
+            - saved_hotel: Hotel saved to database
+            - status: Operation status
+        """
+        try:
+            # Extract required fields from hotel data
+            name = hotel_data.get("name")
+            check_in_date = hotel_data.get("check_in_date")
+            check_out_date = hotel_data.get("check_out_date")
+
+            if not name or not check_in_date or not check_out_date:
+                return {
+                    "saved_hotel": None,
+                    "status": "error",
+                    "error": "name, check_in_date, and check_out_date are required in hotel data",
+                }
+
+            # Parse dates
+            datetime_check_in = self._parse_date(check_in_date)
+            datetime_check_out = self._parse_date(check_out_date)
+
+            # Create hotel using saved_hotels service
+            saved_hotel = self.saved_hotels_service.create_hotel(
+                name=name,
+                datetime_check_in=datetime_check_in,
+                datetime_check_out=datetime_check_out,
+                trip_id=trip_id,
+                description=hotel_data.get("description"),
+                external_link=hotel_data.get("external_link"),
+                link=hotel_data.get("link"),
+                overall_rating=hotel_data.get("overall_rating"),
+                rate_per_night=hotel_data.get("rate_per_night"),
+                lat=hotel_data.get("lat"),
+                long=hotel_data.get("long"),
+                amenities=hotel_data.get("amenities"),
+                photos=hotel_data.get("photos"),
+            )
+
+            return {
+                "saved_hotel": saved_hotel,
+                "uid": uid,
+                "trip_id": trip_id,
+                "status": "success",
+            }
+
+        except Exception as e:
+            return {
                 "saved_hotel": None,
                 "status": "error",
                 "error": str(e),
             }
+
 
     def _transform_search_result_to_saved_hotel(
         self,
@@ -188,6 +230,9 @@ class HotelManagementService:
             # Transform amenities
             amenities = self._extract_amenities(hotel_data)
 
+            # Transform photos (max 3)
+            photos = self._extract_photos(hotel_data)
+
             # Build transformed hotel data
             transformed_data = {
                 "name": name,
@@ -213,6 +258,8 @@ class HotelManagementService:
                 transformed_data["long"] = long
             if amenities:
                 transformed_data["amenities"] = amenities
+            if photos:
+                transformed_data["photos"] = photos
 
             return transformed_data
 
@@ -220,7 +267,7 @@ class HotelManagementService:
             print(f"Error transforming hotel data: {str(e)}")
             return None
 
-    def _save_hotel_to_database(self, hotel_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _save_transformed_hotel_to_database(self, hotel_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Save transformed hotel data to the database.
 
@@ -236,6 +283,76 @@ class HotelManagementService:
         except Exception as e:
             print(f"Error saving hotel to database: {str(e)}")
             return None
+
+    def save_hotel_to_database(
+        self,
+        uid: str,
+        trip_id: str,
+        hotel_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Save a selected hotel to the database.
+
+        This function takes hotel details that were retrieved from the search endpoint
+        and saves them to the database using the saved_hotels service.
+
+        Args:
+            uid: User ID who is saving the hotel
+            trip_id: Trip ID to associate the hotel with
+            hotel_data: Hotel details (name, dates, rates, amenities, photos, etc.)
+
+        Returns:
+            Dictionary containing:
+            - saved_hotel: Hotel saved to database
+            - status: Operation status
+        """
+        try:
+            # Extract required fields from hotel data
+            name = hotel_data.get("name")
+            check_in_date = hotel_data.get("check_in_date")
+            check_out_date = hotel_data.get("check_out_date")
+
+            if not name or not check_in_date or not check_out_date:
+                return {
+                    "saved_hotel": None,
+                    "status": "error",
+                    "error": "name, check_in_date, and check_out_date are required in hotel data",
+                }
+
+            # Parse dates
+            datetime_check_in = self._parse_date(check_in_date)
+            datetime_check_out = self._parse_date(check_out_date)
+
+            # Create hotel using saved_hotels service
+            saved_hotel = self.saved_hotels_service.create_hotel(
+                name=name,
+                datetime_check_in=datetime_check_in,
+                datetime_check_out=datetime_check_out,
+                trip_id=trip_id,
+                description=hotel_data.get("description"),
+                external_link=hotel_data.get("external_link"),
+                link=hotel_data.get("link"),
+                overall_rating=hotel_data.get("overall_rating"),
+                rate_per_night=hotel_data.get("rate_per_night"),
+                lat=hotel_data.get("lat"),
+                long=hotel_data.get("long"),
+                amenities=hotel_data.get("amenities"),
+                photos=hotel_data.get("photos"),
+            )
+
+            return {
+                "saved_hotel": saved_hotel,
+                "uid": uid,
+                "trip_id": trip_id,
+                "status": "success",
+            }
+
+        except Exception as e:
+            return {
+                "saved_hotel": None,
+                "status": "error",
+                "error": str(e),
+            }
 
     def _parse_date(self, date_string: str) -> datetime:
         """Parse date string to datetime object."""
@@ -253,6 +370,46 @@ class HotelManagementService:
             except (ValueError, TypeError):
                 pass
         return None
+
+    def get_hotel_by_id(
+        self,
+        hotel_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Get hotel details by hotel ID.
+
+        This method retrieves a hotel from the saved_hotels service
+        by its database ID.
+
+        Args:
+            hotel_id: Hotel UUID to retrieve
+
+        Returns:
+            Dictionary containing:
+            - hotel: Hotel details from database
+            - status: Operation status
+        """
+        try:
+            hotel = self.saved_hotels_service.get_hotel(hotel_id)
+
+            if not hotel:
+                return {
+                    "hotel": None,
+                    "status": "error",
+                    "error": "Hotel not found",
+                }
+
+            return {
+                "hotel": hotel,
+                "status": "success",
+            }
+
+        except Exception as e:
+            return {
+                "hotel": None,
+                "status": "error",
+                "error": str(e),
+            }
 
     def _extract_rate_per_night(self, hotel_data: Dict[str, Any]) -> Optional[float]:
         """Extract rate per night from hotel data."""
@@ -308,6 +465,31 @@ class HotelManagementService:
                 return [str(a) for a in amenities]
             elif isinstance(amenities, str):
                 return amenities.split(",")
+        return None
+
+    def _extract_photos(self, hotel_data: Dict[str, Any]) -> Optional[List[str]]:
+        """Extract up to 3 photo URLs from hotel data."""
+        photos = (
+            hotel_data.get("photos") or
+            hotel_data.get("images") or
+            hotel_data.get("thumbnails")
+        )
+
+        if photos:
+            if isinstance(photos, list):
+                # Extract photo URLs from list of objects or strings
+                photo_urls = []
+                for photo in photos[:3]:  # Limit to 3 photos
+                    if isinstance(photo, dict):
+                        # If it's a dict, try to find the URL
+                        url = photo.get("url") or photo.get("src") or photo.get("thumbnail")
+                        if url:
+                            photo_urls.append(url)
+                    elif isinstance(photo, str):
+                        photo_urls.append(photo)
+                return photo_urls[:3] if len(photo_urls) > 3 else photo_urls
+            elif isinstance(photos, str):
+                return [photos][:3]  # Return single photo as list, limited to 1
         return None
 
     def health_check(self) -> str:

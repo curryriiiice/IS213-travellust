@@ -66,6 +66,7 @@ def create_hotel():
             lat=data.get("lat"),
             long=data.get("long"),
             amenities=data.get("amenities"),
+            photos=data.get("photos"),
         )
 
         return jsonify({"data": hotel}), 201
@@ -96,6 +97,7 @@ def update_hotel(hotel_id):
             lat=data.get("lat"),
             long=data.get("long"),
             amenities=data.get("amenities"),
+            photos=data.get("photos"),
         )
 
         if not hotel:
