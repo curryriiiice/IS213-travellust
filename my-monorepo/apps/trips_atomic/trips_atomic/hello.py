@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 
-from trips_atomic.supabase_client import supabase
+from .supabase_client import supabase
 
 app = Flask(__name__)
 
