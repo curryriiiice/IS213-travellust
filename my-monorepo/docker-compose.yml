@@ -1,27 +1,29 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
   flight-search-wrapper:
     build:
       context: ./apps/flight-search-wrapper
       dockerfile: Dockerfile
     container_name: flight-search-wrapper
     ports:
-      - "5003:5000"
+      - '5003:5000'
+    env_file:
+      - .env
     environment:
-      - FLIGHTAPI_KEY=${FLIGHTAPI_KEY:-69bf60ca8304b92f177b00de}
-      - FLIGHTAPI_BASE_URL=${FLIGHTAPI_BASE_URL:-https://api.flightapi.io}
-      - FLIGHTAPI_DEFAULT_CURRENCY=${FLIGHTAPI_DEFAULT_CURRENCY:-USD}
-      - FLIGHTAPI_DEFAULT_CABIN_CLASS=${FLIGHTAPI_DEFAULT_CABIN_CLASS:-Economy}
-      - FLIGHTAPI_DEFAULT_ADULTS=${FLIGHTAPI_DEFAULT_ADULTS:-1}
-      - FLIGHTAPI_DEFAULT_CHILDREN=${FLIGHTAPI_DEFAULT_CHILDREN:-0}
-      - FLIGHTAPI_DEFAULT_INFANTS=${FLIGHTAPI_DEFAULT_INFANTS:-0}
-      - USD_TO_SGD_RATE=${USD_TO_SGD_RATE:-1.34}
       - FLASK_PORT=5000
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    networks:
-      - flight-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health')"]
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import requests; requests.get('http://localhost:5000/api/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -33,21 +35,28 @@ services:
       dockerfile: Dockerfile
     container_name: saved-flights
     ports:
-      - "5004:5000"
+      - '5004:5000'
+    env_file:
+      - .env
     environment:
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_URL=${SAVED_FLIGHTS_SUPABASE_URL}
+      - SUPABASE_KEY=${SAVED_FLIGHTS_SUPABASE_KEY}
       - FLASK_PORT=5000
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    networks:
-      - flight-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health')"]
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import requests; requests.get('http://localhost:5000/api/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    depends_on:
+      - redis
 
   flight-management:
     build:
@@ -55,19 +64,24 @@ services:
       dockerfile: Dockerfile
     container_name: flight-management
     ports:
-      - "5005:5000"
+      - '5005:5000'
+    env_file:
+      - .env
     environment:
       - SEARCH_WRAPPER_HOST=flight-search-wrapper
       - SEARCH_WRAPPER_PORT=5000
       - SAVED_FLIGHTS_HOST=saved-flights
       - SAVED_FLIGHTS_PORT=5000
       - FLASK_PORT=5000
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    networks:
-      - flight-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/api/health')"]
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import requests; requests.get('http://localhost:5000/api/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -84,10 +98,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - '5001:5000'
-    environment:
-      - FLASK_DEBUG=1
     env_file:
-      - apps/trips_atomic/.env
+      - .env
+    environment:
+      - SUPABASE_URL=${TRIPS_SUPABASE_URL}
+      - SUPABASE_KEY=${TRIPS_SUPABASE_KEY}
 
   attractions:
     build:
@@ -95,10 +110,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - '5002:5000'
-    environment:
-      - FLASK_DEBUG=1
     env_file:
-      - apps/attractions/.env
+      - .env
+    environment:
+      - SUPABASE_URL=${ATTRACTIONS_SUPABASE_URL}
+      - SUPABASE_KEY=${ATTRACTIONS_SUPABASE_KEY}
 
   hotel-search-wrapper:
     build:
@@ -106,11 +122,21 @@ services:
       dockerfile: Dockerfile
     ports:
       - '5007:5000'
-    environment:
-      - FLASK_DEBUG=1
     env_file:
-      - apps/hotel-management/.env
-    command: ["python", "-m", "flask", "--app", "hotel_management.hotel_search_wrapper_app", "run", "--host=0.0.0.0"]
+      - .env
+    environment:
+      - SUPABASE_URL=${HOTELS_SUPABASE_URL}
+      - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+    command:
+      [
+        'python',
+        '-m',
+        'flask',
+        '--app',
+        'hotel_management.hotel_search_wrapper_app',
+        'run',
+        '--host=0.0.0.0',
+      ]
 
   saved-hotels:
     build:
@@ -118,11 +144,21 @@ services:
       dockerfile: Dockerfile
     ports:
       - '5008:5000'
-    environment:
-      - FLASK_DEBUG=1
     env_file:
-      - apps/hotel-management/.env
-    command: ["python", "-m", "flask", "--app", "hotel_management.saved_hotels_app", "run", "--host=0.0.0.0"]
+      - .env
+    environment:
+      - SUPABASE_URL=${HOTELS_SUPABASE_URL}
+      - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+    command:
+      [
+        'python',
+        '-m',
+        'flask',
+        '--app',
+        'hotel_management.saved_hotels_app',
+        'run',
+        '--host=0.0.0.0',
+      ]
 
   hotel-management:
     build:
@@ -130,11 +166,21 @@ services:
       dockerfile: Dockerfile
     ports:
       - '5009:5000'
-    environment:
-      - FLASK_DEBUG=1
     env_file:
-      - apps/hotel-management/.env
-    command: ["python", "-m", "flask", "--app", "hotel_management.hotel_management_app", "run", "--host=0.0.0.0"]
+      - .env
+    environment:
+      - SUPABASE_URL=${HOTELS_SUPABASE_URL}
+      - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+    command:
+      [
+        'python',
+        '-m',
+        'flask',
+        '--app',
+        'hotel_management.hotel_management_app',
+        'run',
+        '--host=0.0.0.0',
+      ]
 
   booked_tickets:
     build:
@@ -142,22 +188,24 @@ services:
       dockerfile: Dockerfile
     ports:
       - '5006:5000'
-    environment:
-      - FLASK_DEBUG=1
     env_file:
-      - apps/booked_tickets/.env
+      - .env
+    environment:
+      - SUPABASE_URL=${BOOKED_TICKETS_SUPABASE_URL}
+      - SUPABASE_KEY=${BOOKED_TICKETS_SUPABASE_KEY}
 
-  book-attractions:
+  collaboration_service:
     build:
-      context: ./apps/book-attractions
+      context: ./apps/collaboration_service
       dockerfile: Dockerfile
+    container_name: collaboration_service
     ports:
       - '5010:5000'
-    environment:
-      - FLASK_DEBUG=1
     env_file:
-      - apps/book-attractions/.env
-
-networks:
-  flight-network:
-    driver: bridge
+      - .env
+    environment:
+      - SUPABASE_URL=${TRIPS_SUPABASE_URL}
+      - SUPABASE_KEY=${TRIPS_SUPABASE_KEY}
+      - PORT=5000
+    depends_on:
+      - redis
