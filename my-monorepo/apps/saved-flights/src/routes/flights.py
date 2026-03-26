@@ -3,6 +3,7 @@ from ..services.flight_service import FlightService
 from ..utils.validators import validate_flight_data, validate_flight_id
 from ..utils.api_errors import APIError
 from ..logging_config import get_logger
+from ..utils.redis_publisher import publish_event
 
 flights_bp = Blueprint('flights', __name__)
 logger = get_logger(__name__)
@@ -13,7 +14,7 @@ def create_flight():
     """
     POST /api/flights
     Body: { flight_number, airline, datetime_departure, datetime_arrival,
-            external_link, trip_id, cost }
+            external_link, trip_id, user_id, cost }
     Returns: { success: true, data: flight_id }
     """
     try:
@@ -25,6 +26,14 @@ def create_flight():
         flight_id = service.create_flight(data)
 
         logger.info(f"Flight created successfully with ID: {flight_id}")
+
+        publish_event(
+            trip_id=data.get('trip_id'),
+            event_type='FLIGHT_ADDED',
+            data={**data, 'flight_id': flight_id},
+            user_id=data.get('user_id')
+
+        )
         return jsonify({'success': True, 'data': {'flight_id': flight_id}}), 201
     except ValueError as e:
         logger.warning(f"Validation error creating flight: {str(e)}")
