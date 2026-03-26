@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { TripCard } from "@/components/TripCard";
 import { TripCommandCenter } from "@/components/TripCommandCenter";
-import { mockTrips } from "@/data/mockData";
 import { mockCollaborators } from "@/data/mockData";
+import { tripsApi } from "@/services/tripsApi";
 import type { Trip, ItineraryNode, Collaborator } from "@/types/trip";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -13,7 +14,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Plus, Compass, Plane, Building2, MapPin, UserPlus, UserMinus, CalendarIcon, DollarSign, MapPinIcon, User } from "lucide-react";
+import {
+  Plus,
+  Compass,
+  Plane,
+  Building2,
+  MapPin,
+  UserPlus,
+  UserMinus,
+  CalendarIcon,
+  DollarSign,
+  MapPinIcon,
+  User,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -24,9 +39,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+// Current user — in a real app this comes from auth context
+const CURRENT_USER_ID = "u1";
+
 const Index = () => {
   const navigate = useNavigate();
-  const [trips, setTrips] = useState<Trip[]>(mockTrips);
+  const queryClient = useQueryClient();
+
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
   const [addNodeTripId, setAddNodeTripId] = useState<string | null>(null);
@@ -52,6 +71,39 @@ const Index = () => {
   const [tripCurrency, setTripCurrency] = useState("USD");
   const [tripCollaborators, setTripCollaborators] = useState<Collaborator[]>([mockCollaborators[0]]);
 
+  // ---------------------------------------------------------------------------
+  // Data fetching
+  // ---------------------------------------------------------------------------
+  const { data: trips = [], isLoading, isError } = useQuery({
+    queryKey: ["trips"],
+    queryFn: tripsApi.getAll,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Mutations
+  // ---------------------------------------------------------------------------
+  const createTripMutation = useMutation({
+    mutationFn: tripsApi.create,
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["trips"] });
+      toast({ title: "Trip created", description: `${created.name} — ${created.destination}` });
+      setNewTripOpen(false);
+      resetNewTripForm();
+    },
+    onError: () => toast({ title: "Failed to create trip", variant: "destructive" }),
+  });
+
+  const updateTripMutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<Trip> }) =>
+      tripsApi.update(id, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trips"] }),
+    onError: () => toast({ title: "Failed to update trip", variant: "destructive" }),
+  });
+
+
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
   const resetNewTripForm = () => {
     setTripName("");
     setTripDestination("");
@@ -64,8 +116,7 @@ const Index = () => {
 
   const handleCreateTrip = () => {
     if (!tripName || !tripDestination || !tripStartDate || !tripEndDate) return;
-    const newTrip: Trip = {
-      id: `trip-${Date.now()}`,
+    createTripMutation.mutate({
       name: tripName,
       destination: tripDestination,
       startDate: format(tripStartDate, "yyyy-MM-dd"),
@@ -75,15 +126,11 @@ const Index = () => {
       currency: tripCurrency,
       collaborators: tripCollaborators,
       nodes: [],
-    };
-    setTrips((prev) => [...prev, newTrip]);
-    toast({ title: "Trip created", description: `${tripName} — ${tripDestination}` });
-    setNewTripOpen(false);
-    resetNewTripForm();
+    });
   };
 
   const toggleTripCollab = (collab: Collaborator) => {
-    if (collab.id === "u1") return; // can't remove self
+    if (collab.id === CURRENT_USER_ID) return;
     setTripCollaborators((prev) =>
       prev.some((c) => c.id === collab.id)
         ? prev.filter((c) => c.id !== collab.id)
@@ -93,6 +140,9 @@ const Index = () => {
 
   const handleAddNode = () => {
     if (!addNodeTripId || !nodeTitle || !nodeDate) return;
+    const trip = trips.find((t) => t.id === addNodeTripId);
+    if (!trip) return;
+
     const newNode: ItineraryNode = {
       id: `n-${Date.now()}`,
       type: nodeType,
@@ -102,15 +152,19 @@ const Index = () => {
       time: nodeTime,
       duration: nodeDuration || undefined,
       cost: Number(nodeCost) || 0,
-      currency: "USD",
+      currency: trip.currency,
       status: "pending",
       details: {},
     };
-    setTrips((prev) =>
-      prev.map((t) =>
-        t.id === addNodeTripId ? { ...t, nodes: [...t.nodes, newNode] } : t
-      )
-    );
+
+    updateTripMutation.mutate({
+      id: addNodeTripId,
+      patch: {
+        nodes: [...trip.nodes, newNode],
+        spent: trip.spent + (Number(nodeCost) || 0),
+      },
+    });
+
     toast({ title: "Node added", description: `${nodeTitle} added to trip` });
     setAddNodeOpen(false);
     resetNodeForm();
@@ -142,42 +196,63 @@ const Index = () => {
   );
 
   const addCollaborator = (collab: Collaborator) => {
-    if (!collabTripId) return;
-    setTrips((prev) =>
-      prev.map((t) =>
-        t.id === collabTripId
-          ? { ...t, collaborators: [...t.collaborators, collab] }
-          : t
-      )
-    );
+    if (!collabTripId || !collabTrip) return;
+    const updated = [...collabTrip.collaborators, collab];
+    updateTripMutation.mutate({ id: collabTripId, patch: { collaborators: updated } });
     toast({ title: "Collaborator added", description: `${collab.name} joined the trip` });
   };
 
   const removeCollaborator = (collabId: string) => {
-    if (!collabTripId) return;
-    setTrips((prev) =>
-      prev.map((t) =>
-        t.id === collabTripId
-          ? { ...t, collaborators: t.collaborators.filter((c) => c.id !== collabId) }
-          : t
-      )
-    );
+    if (!collabTripId || !collabTrip) return;
+    const updated = collabTrip.collaborators.filter((c) => c.id !== collabId);
+    updateTripMutation.mutate({ id: collabTripId, patch: { collaborators: updated } });
     toast({ title: "Collaborator removed" });
   };
 
+  const handleUpdateTrip = (updated: Trip) => {
+    updateTripMutation.mutate({ id: updated.id, patch: updated });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Trip command center view
+  // ---------------------------------------------------------------------------
   if (selectedTrip) {
-    const liveTrip = trips.find((t) => t.id === selectedTrip.id) || selectedTrip;
+    const liveTrip = trips.find((t) => t.id === selectedTrip.id) ?? selectedTrip;
     return (
       <TripCommandCenter
         trip={liveTrip}
         onBack={() => setSelectedTrip(null)}
-        onUpdateTrip={(updated) =>
-          setTrips((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
-        }
+        onUpdateTrip={handleUpdateTrip}
       />
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Loading / error states
+  // ---------------------------------------------------------------------------
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3">
+        <AlertCircle className="w-6 h-6 text-destructive" />
+        <p className="text-sm text-muted-foreground">Could not load trips. Is the trips service running?</p>
+        <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["trips"] })}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main trips list
+  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -191,12 +266,7 @@ const Index = () => {
             <Plus className="w-3.5 h-3.5" />
             New Trip
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => navigate("/profile")}
-          >
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/profile")}>
             <User className="w-4 h-4" />
           </Button>
         </div>
@@ -250,38 +320,25 @@ const Index = () => {
         </motion.div>
       </main>
 
-      {/* New Trip Dialog */}
+      {/* ------------------------------------------------------------------ */}
+      {/* New Trip Dialog                                                      */}
+      {/* ------------------------------------------------------------------ */}
       <Dialog open={newTripOpen} onOpenChange={(open) => { setNewTripOpen(open); if (!open) resetNewTripForm(); }}>
         <DialogContent className="sm:max-w-lg bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-sm font-medium">Create New Trip</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
-            {/* Trip name */}
             <div>
               <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Trip Name</label>
-              <input
-                value={tripName}
-                onChange={(e) => setTripName(e.target.value)}
-                placeholder="Tokyo Sprint"
-                className="form-select-style"
-              />
+              <input value={tripName} onChange={(e) => setTripName(e.target.value)} placeholder="Tokyo Sprint" className="form-select-style" />
             </div>
-
-            {/* Destination */}
             <div>
               <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
                 <MapPinIcon className="w-3 h-3 inline mr-1" />Destination
               </label>
-              <input
-                value={tripDestination}
-                onChange={(e) => setTripDestination(e.target.value)}
-                placeholder="Tokyo, Japan"
-                className="form-select-style"
-              />
+              <input value={tripDestination} onChange={(e) => setTripDestination(e.target.value)} placeholder="Tokyo, Japan" className="form-select-style" />
             </div>
-
-            {/* Dates */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
@@ -289,24 +346,12 @@ const Index = () => {
                 </label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal h-8 text-xs bg-secondary border-border",
-                        !tripStartDate && "text-muted-foreground"
-                      )}
-                    >
+                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-8 text-xs bg-secondary border-border", !tripStartDate && "text-muted-foreground")}>
                       {tripStartDate ? format(tripStartDate, "MMM d, yyyy") : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={tripStartDate}
-                      onSelect={setTripStartDate}
-                      initialFocus
-                      className={cn("p-3 pointer-events-auto")}
-                    />
+                    <Calendar mode="single" selected={tripStartDate} onSelect={setTripStartDate} initialFocus className={cn("p-3 pointer-events-auto")} />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -316,43 +361,22 @@ const Index = () => {
                 </label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal h-8 text-xs bg-secondary border-border",
-                        !tripEndDate && "text-muted-foreground"
-                      )}
-                    >
+                    <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-8 text-xs bg-secondary border-border", !tripEndDate && "text-muted-foreground")}>
                       {tripEndDate ? format(tripEndDate, "MMM d, yyyy") : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={tripEndDate}
-                      onSelect={setTripEndDate}
-                      disabled={(date) => tripStartDate ? date < tripStartDate : false}
-                      initialFocus
-                      className={cn("p-3 pointer-events-auto")}
-                    />
+                    <Calendar mode="single" selected={tripEndDate} onSelect={setTripEndDate} disabled={(date) => tripStartDate ? date < tripStartDate : false} initialFocus className={cn("p-3 pointer-events-auto")} />
                   </PopoverContent>
                 </Popover>
               </div>
             </div>
-
-            {/* Budget */}
             <div className="grid grid-cols-3 gap-2">
               <div className="col-span-2">
                 <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
                   <DollarSign className="w-3 h-3 inline mr-1" />Budget
                 </label>
-                <input
-                  type="number"
-                  value={tripBudget}
-                  onChange={(e) => setTripBudget(e.target.value)}
-                  placeholder="5000"
-                  className="form-select-style"
-                />
+                <input type="number" value={tripBudget} onChange={(e) => setTripBudget(e.target.value)} placeholder="5000" className="form-select-style" />
               </div>
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Currency</label>
@@ -364,8 +388,6 @@ const Index = () => {
                 </select>
               </div>
             </div>
-
-            {/* Collaborators */}
             <div>
               <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-2">
                 <UserPlus className="w-3 h-3 inline mr-1" />Collaborators
@@ -373,7 +395,7 @@ const Index = () => {
               <div className="space-y-1">
                 {mockCollaborators.map((c) => {
                   const isSelected = tripCollaborators.some((tc) => tc.id === c.id);
-                  const isSelf = c.id === "u1";
+                  const isSelf = c.id === CURRENT_USER_ID;
                   return (
                     <button
                       key={c.id}
@@ -385,10 +407,7 @@ const Index = () => {
                         isSelf && "opacity-70 cursor-default"
                       )}
                     >
-                      <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium border-2 border-background shrink-0"
-                        style={{ backgroundColor: c.color }}
-                      >
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium border-2 border-background shrink-0" style={{ backgroundColor: c.color }}>
                         {c.initials}
                       </div>
                       <span className="text-xs flex-1 text-left">{c.name}</span>
@@ -398,29 +417,29 @@ const Index = () => {
                           <Plus className="w-2.5 h-2.5 text-accent-foreground rotate-45" />
                         </span>
                       )}
-                      {!isSelected && !isSelf && (
-                        <UserPlus className="w-3 h-3 text-muted-foreground" />
-                      )}
+                      {!isSelected && !isSelf && <UserPlus className="w-3 h-3 text-muted-foreground" />}
                     </button>
                   );
                 })}
               </div>
             </div>
-
             <Button
               variant="accent"
               size="sm"
               className="w-full"
               onClick={handleCreateTrip}
-              disabled={!tripName || !tripDestination || !tripStartDate || !tripEndDate}
+              disabled={!tripName || !tripDestination || !tripStartDate || !tripEndDate || createTripMutation.isPending}
             >
-              <Plus className="w-3.5 h-3.5" /> Create Trip
+              {createTripMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              Create Trip
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Add Node Dialog */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Add Node Dialog                                                      */}
+      {/* ------------------------------------------------------------------ */}
       <Dialog open={addNodeOpen} onOpenChange={setAddNodeOpen}>
         <DialogContent className="sm:max-w-md bg-card border-border">
           <DialogHeader>
@@ -476,14 +495,23 @@ const Index = () => {
                 <input value={nodeDuration} onChange={(e) => setNodeDuration(e.target.value)} placeholder="2h 30m" className="form-select-style" />
               </div>
             </div>
-            <Button variant="accent" size="sm" className="w-full" onClick={handleAddNode} disabled={!nodeTitle || !nodeDate}>
-              <Plus className="w-3.5 h-3.5" /> Add {nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}
+            <Button
+              variant="accent"
+              size="sm"
+              className="w-full"
+              onClick={handleAddNode}
+              disabled={!nodeTitle || !nodeDate || updateTripMutation.isPending}
+            >
+              {updateTripMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              Add {nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Collaborator Manager Dialog */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Collaborator Manager Dialog                                          */}
+      {/* ------------------------------------------------------------------ */}
       <Dialog open={collabOpen} onOpenChange={setCollabOpen}>
         <DialogContent className="sm:max-w-sm bg-card border-border">
           <DialogHeader>
@@ -500,7 +528,7 @@ const Index = () => {
                       <span className="text-xs">{c.name}</span>
                       {c.isOnline && <span className="w-1.5 h-1.5 rounded-full bg-node-hotel" />}
                     </div>
-                    {c.id !== "u1" && (
+                    {c.id !== CURRENT_USER_ID && (
                       <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => removeCollaborator(c.id)}>
                         <UserMinus className="w-3 h-3" />
                       </Button>

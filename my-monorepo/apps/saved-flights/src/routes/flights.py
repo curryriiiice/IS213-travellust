@@ -31,8 +31,8 @@ def create_flight():
             trip_id=data.get('trip_id'),
             event_type='FLIGHT_ADDED',
             data={**data, 'flight_id': flight_id},
-            user_id=data.get('user_id')
-
+            user_id=data.get('user_id'),
+            user_name=data.get('user_name'),
         )
         return jsonify({'success': True, 'data': {'flight_id': flight_id}}), 201
     except ValueError as e:
@@ -110,6 +110,13 @@ def update_flight(flight_id):
         service = FlightService()
         flight = service.update_flight(flight_id, data)
 
+        publish_event(
+            trip_id=data.get('trip_id'),
+            event_type='FLIGHT_UPDATED',
+            data={**data, 'flight_id': flight_id},
+            user_id=data.get('user_id'),
+            user_name=data.get('user_name'),
+        )
         return jsonify({'success': True, 'data': flight}), 200
     except ValueError as e:
         logger.warning(f"Validation error updating flight {flight_id}: {str(e)}")
@@ -132,9 +139,17 @@ def delete_flight(flight_id):
     try:
         validate_flight_id(flight_id)
 
+        data = request.get_json(silent=True) or {}
         service = FlightService()
         service.delete_flight(flight_id)
 
+        publish_event(
+            trip_id=data.get('trip_id'),
+            event_type='FLIGHT_DELETED',
+            data={'flight_id': flight_id, **data},
+            user_id=data.get('user_id'),
+            user_name=data.get('user_name'),
+        )
         return jsonify({'success': True, 'message': 'Flight deleted successfully'}), 200
     except ValueError as e:
         logger.warning(f"Validation error deleting flight {flight_id}: {str(e)}")

@@ -98,6 +98,45 @@ def get_trip_members(trip_id):
     return jsonify({"trip_id": trip_id, "members": get_trip_users(trip_id)})
 
 
+EVENT_SUMMARIES = {
+    "FLIGHT_ADDED": ("added a flight", "flight"),
+    "FLIGHT_UPDATED": ("updated a flight", "flight"),
+    "FLIGHT_DELETED": ("removed a flight", "flight"),
+    "HOTEL_ADDED": ("added a hotel", "hotel"),
+    "HOTEL_UPDATED": ("updated a hotel", "hotel"),
+    "HOTEL_DELETED": ("removed a hotel", "hotel"),
+    "ATTRACTION_ADDED": ("added an attraction", "attraction"),
+    "ATTRACTION_UPDATED": ("updated an attraction", "attraction"),
+    "ATTRACTION_DELETED": ("removed an attraction", "attraction"),
+    "NODE_ADDED": ("added an item", "node"),
+    "NODE_UPDATED": ("updated an item", "node"),
+    "NODE_DELETED": ("removed an item", "node"),
+}
+
+
+def build_activity_summary(data: dict) -> dict:
+    event_type = data.get("type", "")
+    verb, node_type = EVENT_SUMMARIES.get(event_type, ("updated the trip", "trip"))
+    inner = data.get("data", {})
+    item_name = (
+        inner.get("title")
+        or inner.get("flight_number")
+        or inner.get("hotel_name")
+        or inner.get("name")
+        or ""
+    )
+    user_name = data.get("user_name") or data.get("user_id") or "Someone"
+    return {
+        "user_id": data.get("user_id"),
+        "user_name": user_name,
+        "event": event_type,
+        "verb": verb,
+        "node_type": node_type,
+        "item_name": item_name,
+        "timestamp": data.get("timestamp", datetime.utcnow().isoformat()),
+    }
+
+
 def start_redis_listener():
     """Background thread to listen to Redis and broadcast to WebSocket."""
 
@@ -113,8 +152,13 @@ def start_redis_listener():
                     channel = message["channel"]
                     trip_id = channel.split(":")[-1]
                     data = json.loads(message["data"])
-                    print(f"Broadcasting trip_update to room {trip_id}")  # Add debug log
+                    print(f"Broadcasting trip_update to room {trip_id}")
                     socketio.emit("trip_update", data, room=trip_id)
+                    socketio.emit(
+                        "activity_log",
+                        build_activity_summary(data),
+                        room=trip_id,
+                    )
             except json.JSONDecodeError as e:
                 print(f"Invalid JSON in Redis message: {e}")
             except Exception as e:

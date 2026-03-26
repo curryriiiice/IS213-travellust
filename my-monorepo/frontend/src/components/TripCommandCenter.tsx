@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
 import { LedgerPane } from "./LedgerPane";
 import { BudgetBar } from "./BudgetBar";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
-import type { Trip, ItineraryNode } from "@/types/trip";
-import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin } from "lucide-react";
+import { ActivityLog } from "./ActivityLog";
+import { useCollaborationSocket, TripUpdateEvent } from "@/hooks/useCollaborationSocket";
+import type { Trip, ItineraryNode, Collaborator } from "@/types/trip";
+import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin, Clock, Receipt, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,16 +18,24 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 
+// Current user — in a real app this comes from auth context
+const CURRENT_USER_ID = "u1";
+const CURRENT_USER_NAME = "You";
+
 interface TripCommandCenterProps {
   trip: Trip;
   onBack: () => void;
   onUpdateTrip?: (trip: Trip) => void;
 }
 
+type RightTab = "ledger" | "activity";
+
 export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCenterProps) {
   const navigate = useNavigate();
+  const [nodes, setNodes] = useState<ItineraryNode[]>(trip.nodes);
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
+  const [rightTab, setRightTab] = useState<RightTab>("ledger");
 
   // Add node form state
   const [nodeType, setNodeType] = useState<"flight" | "hotel" | "attraction">("flight");
@@ -35,6 +45,51 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
   const [nodeTime, setNodeTime] = useState("09:00");
   const [nodeCost, setNodeCost] = useState("");
   const [nodeDuration, setNodeDuration] = useState("");
+
+  // Handle incoming real-time trip updates from other users
+  const handleTripUpdate = useCallback(
+    (event: TripUpdateEvent & { user_id: string | null }) => {
+      // Skip our own events (already applied optimistically)
+      if (event.user_id === CURRENT_USER_ID) return;
+
+      const { type, data } = event;
+
+      if (type.endsWith("_ADDED")) {
+        const incoming = data as Partial<ItineraryNode>;
+        if (!incoming.id) return;
+        setNodes((prev) => {
+          if (prev.some((n) => n.id === incoming.id)) return prev;
+          return [...prev, incoming as ItineraryNode];
+        });
+        toast({ title: "New item added", description: incoming.title ?? "A collaborator added an item" });
+      } else if (type.endsWith("_UPDATED")) {
+        const incoming = data as Partial<ItineraryNode> & { flight_id?: string };
+        const targetId = incoming.id ?? incoming.flight_id;
+        if (!targetId) return;
+        setNodes((prev) =>
+          prev.map((n) => (n.id === targetId ? { ...n, ...incoming } : n))
+        );
+      } else if (type.endsWith("_DELETED")) {
+        const incoming = data as { node_id?: string; flight_id?: string; hotel_id?: string };
+        const targetId = incoming.node_id ?? incoming.flight_id ?? incoming.hotel_id;
+        if (!targetId) return;
+        setNodes((prev) => prev.filter((n) => n.id !== targetId));
+      }
+    },
+    []
+  );
+
+  const { activeUserIds, activityLog, isConnected } = useCollaborationSocket(
+    trip.id,
+    CURRENT_USER_ID,
+    { onTripUpdate: handleTripUpdate }
+  );
+
+  // Build live collaborator list — mark online based on socket active users
+  const liveCollaborators: Collaborator[] = trip.collaborators.map((c) => ({
+    ...c,
+    isOnline: activeUserIds.includes(c.id),
+  }));
 
   const resetForm = () => {
     setNodeTitle("");
@@ -61,19 +116,27 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
       status: "pending",
       details: {},
     };
+
+    // Optimistic update
+    setNodes((prev) => [...prev, newNode]);
+
     const updatedTrip = {
       ...trip,
-      nodes: [...trip.nodes, newNode],
+      nodes: [...nodes, newNode],
       spent: trip.spent + (Number(nodeCost) || 0),
     };
     onUpdateTrip?.(updatedTrip);
+
     toast({ title: "Node added", description: `${nodeTitle} added to itinerary` });
     setAddNodeOpen(false);
     resetForm();
   };
 
+  // Derived trip with live nodes for ledger
+  const liveTrip: Trip = { ...trip, nodes };
+
   // Group nodes by date
-  const nodesByDate = trip.nodes.reduce(
+  const nodesByDate = nodes.reduce(
     (acc, node) => {
       if (!acc[node.date]) acc[node.date] = [];
       acc[node.date].push(node);
@@ -104,7 +167,13 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <CollaboratorAvatars collaborators={trip.collaborators} />
+          {/* Connection indicator */}
+          <span title={isConnected ? "Live" : "Offline"}>
+            {isConnected
+              ? <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+              : <WifiOff className="w-3.5 h-3.5 text-muted-foreground" />}
+          </span>
+          <CollaboratorAvatars collaborators={liveCollaborators} />
           <Button
             variant="ghost"
             size="sm"
@@ -129,7 +198,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
         <div className="w-80 shrink-0 pane-border flex flex-col bg-card">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-              Itinerary · {trip.nodes.length} nodes
+              Itinerary · {nodes.length} nodes
             </span>
             <Button
               variant="ghost"
@@ -157,7 +226,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                 </Button>
               </div>
             )}
-            {Object.entries(nodesByDate).map(([date, nodes]) => (
+            {Object.entries(nodesByDate).map(([date, dateNodes]) => (
               <div key={date}>
                 <div className="px-4 py-2 sticky top-0 bg-card/95 backdrop-blur-sm z-10">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
@@ -168,7 +237,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                     })}
                   </span>
                 </div>
-                {nodes.map((node) => (
+                {dateNodes.map((node) => (
                   <TimelineNode
                     key={node.id}
                     node={node}
@@ -191,9 +260,42 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
           <DetailPane node={selectedNode} />
         </div>
 
-        {/* Right: Ledger & Social */}
-        <div className="w-80 shrink-0 bg-card overflow-y-auto">
-          <LedgerPane trip={trip} />
+        {/* Right: Tabbed — Ledger / Activity */}
+        <div className="w-80 shrink-0 bg-card flex flex-col">
+          {/* Tab bar */}
+          <div className="flex border-b border-border shrink-0">
+            <button
+              onClick={() => setRightTab("ledger")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors ${
+                rightTab === "ledger"
+                  ? "text-foreground border-b-2 border-accent -mb-px"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Receipt className="w-3 h-3" /> Ledger
+            </button>
+            <button
+              onClick={() => setRightTab("activity")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-mono uppercase tracking-widest transition-colors relative ${
+                rightTab === "activity"
+                  ? "text-foreground border-b-2 border-accent -mb-px"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Clock className="w-3 h-3" /> Activity
+              {activityLog.length > 0 && rightTab !== "activity" && (
+                <span className="absolute top-1.5 right-3 w-1.5 h-1.5 rounded-full bg-accent" />
+              )}
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {rightTab === "ledger" ? (
+              <LedgerPane trip={liveTrip} />
+            ) : (
+              <ActivityLog entries={activityLog} />
+            )}
+          </div>
         </div>
       </div>
 

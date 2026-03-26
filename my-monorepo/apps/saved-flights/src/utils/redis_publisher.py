@@ -18,7 +18,7 @@ def get_redis_client() -> redis.Redis:
     return _redis_client
 
 
-def publish_event(trip_id: str, event_type: str, data: dict, user_id: str = None):
+def publish_event(trip_id: str, event_type: str, data: dict, user_id: str = None, user_name: str = None):
     """Publish event to Redis channel for a trip."""
     channel = f"trip:{trip_id}"
     payload = {
@@ -26,6 +26,7 @@ def publish_event(trip_id: str, event_type: str, data: dict, user_id: str = None
         "trip_id": trip_id,
         "data": data,
         "user_id": user_id,
+        "user_name": user_name,
         "timestamp": datetime.utcnow().isoformat()
     }
 
