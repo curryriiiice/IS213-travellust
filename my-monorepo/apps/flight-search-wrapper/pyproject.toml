@@ -1,28 +1,13 @@
 [project]
 name = "flight-search-wrapper"
-version = "0.2.0"
-description = "Microservice for wrapping flight API search functionality using SerpApi Google Flights"
-requires-python = ">=3.14"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
 dependencies = [
-    "flask>=3.0.0",
-    "flask-cors>=4.0.0",
-    "requests>=2.31.0",
-    "python-dotenv>=1.0.0",
-    "gunicorn>=21.2.0",
+    "flask==3.0.0",
+    "flask-cors==4.0.0",
+    "gunicorn==21.2.0",
+    "python-dotenv==1.0.0",
+    "requests==2.31.0",
 ]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "flake8>=7.0.0",
-]
-
-[project.scripts]
-flight-search-wrapper = "src.app:main"
-
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
