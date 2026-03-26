@@ -1,6 +1,9 @@
 """Saved Hotels Microservice Flask App."""
 from flask import Flask, jsonify, request
-from hotel_management.saved_hotels import saved_hotels_service
+try:
+    from saved_hotels import saved_hotels_service
+except ImportError:
+    from .saved_hotels import saved_hotels_service
 
 app = Flask(__name__)
 
@@ -53,19 +56,31 @@ def create_hotel():
 
         from datetime import datetime
 
+        # Handle hotel-management format (hotel object nested) or direct format
+        hotel_data = data.get("hotel", {})
+        trip_id = data.get("trip_id") or hotel_data.get("trip_id")
+
+        # Convert date strings to datetime objects
+        check_in_str = hotel_data.get("datetime_check_in") or hotel_data.get("check_in_date")
+        check_out_str = hotel_data.get("datetime_check_out") or hotel_data.get("check_out_date")
+
+        datetime_check_in = datetime.fromisoformat(check_in_str) if check_in_str else None
+        datetime_check_out = datetime.fromisoformat(check_out_str) if check_out_str else None
+
         hotel = saved_hotels_service.create_hotel(
-            name=data.get("name"),
-            datetime_check_in=datetime.fromisoformat(data.get("datetime_check_in")) if data.get("datetime_check_in") else None,
-            datetime_check_out=datetime.fromisoformat(data.get("datetime_check_out")) if data.get("datetime_check_out") else None,
-            trip_id=data.get("trip_id"),
-            description=data.get("description"),
-            external_link=data.get("external_link"),
-            link=data.get("link"),
-            overall_rating=data.get("overall_rating"),
-            rate_per_night=data.get("rate_per_night"),
-            lat=data.get("lat"),
-            long=data.get("long"),
-            amenities=data.get("amenities"),
+            name=hotel_data.get("name"),
+            datetime_check_in=datetime_check_in,
+            datetime_check_out=datetime_check_out,
+            trip_id=trip_id,
+            description=hotel_data.get("description"),
+            external_link=hotel_data.get("external_link"),
+            link=hotel_data.get("link"),
+            overall_rating=hotel_data.get("overall_rating"),
+            rate_per_night=hotel_data.get("rate_per_night"),
+            lat=hotel_data.get("lat"),
+            long=hotel_data.get("long"),
+            amenities=hotel_data.get("amenities"),
+            photos=hotel_data.get("photos"),
         )
 
         return jsonify({"data": hotel}), 201
@@ -96,6 +111,7 @@ def update_hotel(hotel_id):
             lat=data.get("lat"),
             long=data.get("long"),
             amenities=data.get("amenities"),
+            photos=data.get("photos"),
         )
 
         if not hotel:

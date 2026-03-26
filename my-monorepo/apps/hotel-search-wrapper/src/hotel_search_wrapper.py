@@ -27,7 +27,6 @@ class HotelSearchWrapper:
         adults: int = 2,
         children: int = 0,
         currency: str = "SGD",
-        gl: str = "sg",
         hl: str = "en",
         sort_by: Optional[int] = None,
         rating: Optional[int] = None,
@@ -36,13 +35,12 @@ class HotelSearchWrapper:
         Search for hotels using SerpApi Google Hotels.
 
         Args:
-            query: Search query for hotels (e.g., "Bali Resorts")
+            query: Search query for hotels (e.g., "hotels near Singapore")
             check_in_date: Check-in date in YYYY-MM-DD format
             check_out_date: Check-out date in YYYY-MM-DD format
             adults: Number of adults (default: 2)
             children: Number of children (default: 0)
             currency: Currency for prices (default: "SGD")
-            gl: Two-letter country code (default: "sg" for Singapore)
             hl: Language code (default: "en")
             sort_by: Sort option (optional)
                 - 3: Lowest price
@@ -64,7 +62,6 @@ class HotelSearchWrapper:
             "adults": str(adults),
             "children": str(children),
             "currency": currency,
-            "gl": gl,
             "hl": hl,
             "api_key": self.api_key,
         }

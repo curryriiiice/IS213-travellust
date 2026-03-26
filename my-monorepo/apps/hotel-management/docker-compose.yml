@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  hotel-search-wrapper:
+    build: ../hotel-search-wrapper
+    container_name: hotel-search-wrapper
+    ports:
+      - "5001:5000"
+    environment:
+      - SERPAPI_KEY=${SERPAPI_KEY:-your_api_key_here}
+    networks:
+      - hotel-network
+    restart: unless-stopped
+
+  saved-hotels:
+    build: ../saved-hotels
+    container_name: saved-hotels
+    ports:
+      - "5002:5000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL:-your_supabase_url_here}
+      - SUPABASE_KEY=${SUPABASE_KEY:-your_supabase_key_here}
+    networks:
+      - hotel-network
+    restart: unless-stopped
+
+  hotel-management:
+    build: ./hotel-management
+    container_name: hotel-management
+    ports:
+      - "5000:5000"
+    environment:
+      - SEARCH_SERVICE_URL=http://hotel-search-wrapper:5000
+      - SAVED_HOTELS_SERVICE_URL=http://saved-hotels:5000
+    depends_on:
+      - hotel-search-wrapper
+      - saved-hotels
+    networks:
+      - hotel-network
+    restart: unless-stopped
+
+networks:
+  hotel-network:
+    driver: bridge
