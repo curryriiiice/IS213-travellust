@@ -7,17 +7,20 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
-COPY requirements.txt .
+# Install pip and upgrade
+RUN pip install --no-cache-dir --upgrade pip
+
+# Copy pyproject.toml
+COPY pyproject.toml ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir flask flask-cors requests python-dotenv gunicorn
 
 # Copy application code
 COPY src/ ./src/
 
 # Expose internal port
-EXPOSE 5001
+EXPOSE 5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

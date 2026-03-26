@@ -1,8 +1,7 @@
 [project]
 name = "flight-search-wrapper"
-version = "0.1.0"
-description = "Microservice for wrapping flight API search functionality"
-readme = "README.md"
+version = "0.2.0"
+description = "Microservice for wrapping flight API search functionality using SerpApi Google Flights"
 requires-python = ">=3.14"
 dependencies = [
     "flask>=3.0.0",
@@ -22,8 +21,8 @@ dev = [
 flight-search-wrapper = "src.app:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
 
-[tool.uv]
-dev-dependencies = []
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -5,7 +5,11 @@ load_dotenv()
 
 
 class Config:
-    # FlightAPI Configuration
+    # SerpApi Configuration
+    SERPAPI_KEY = os.getenv('SERPAPI_KEY')
+    SERPAPI_CURRENCY = os.getenv('SERPAPI_CURRENCY', 'SGD')
+
+    # Legacy FlightAPI Configuration (kept for reference, not used)
     FLIGHTAPI_KEY = os.getenv('FLIGHTAPI_KEY')
     FLIGHTAPI_BASE_URL = os.getenv('FLIGHTAPI_BASE_URL', 'https://api.flightapi.io')
     FLIGHTAPI_DEFAULT_CURRENCY = os.getenv('FLIGHTAPI_DEFAULT_CURRENCY', 'USD')
