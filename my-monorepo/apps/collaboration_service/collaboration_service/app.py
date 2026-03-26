@@ -5,9 +5,10 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from .supabase_client import supabase
 from .redis_client import get_redis_client, subscribe_to_channel
+import threading
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 active_users = {}
 
@@ -18,13 +19,13 @@ def verify_user_access(trip_id: str, user_id: str) -> bool:
         return True
 
     response = (
-        supabase.table("trips").select("user_ids").eq("trip_id", trip_id).execute()
+        supabase.table("trips").select("member_ids").eq("id", trip_id).execute()
     )
 
     if not response.data:
         return False
 
-    user_ids = response.data[0].get("user_ids", [])
+    user_ids = response.data[0].get("member_ids", [])
     return user_id in user_ids if user_ids else True
 
 
@@ -99,27 +100,30 @@ def get_trip_members(trip_id):
 
 def start_redis_listener():
     """Background thread to listen to Redis and broadcast to WebSocket."""
-    import threading
-    import time
 
     def listen():
+
         redis_client = get_redis_client()
         pubsub = redis_client.pubsub()
         pubsub.psubscribe("trip:*")
 
         for message in pubsub.listen():
-            if message["type"] == "pmessage":
-                channel = message["channel"]
-                trip_id = channel.split(":")[-1]
-                data = json.loads(message["data"])
+            try:
+                if message["type"] == "pmessage":
+                    channel = message["channel"]
+                    trip_id = channel.split(":")[-1]
+                    data = json.loads(message["data"])
+                    print(f"Broadcasting trip_update to room {trip_id}")  # Add debug log
+                    socketio.emit("trip_update", data, room=trip_id)
+            except json.JSONDecodeError as e:
+                print(f"Invalid JSON in Redis message: {e}")
+            except Exception as e:
+                print(f"Error processing Redis message: {e}")
 
-                socketio.emit("trip_update", data, room=trip_id)
-
-    thread = threading.Thread(target=listen, daemon=True)
-    thread.start()
+    threading.Thread(target=listen, daemon=True).start()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" or __name__ == "collaboration_service.app":
     start_redis_listener()
     port = int(os.getenv("PORT", "5010"))
-    socketio.run(app, host="0.0.0.0", port=port, debug=True)
+    socketio.run(app, host="0.0.0.0", port=port, debug=True, allow_unsafe_werkzeug=True)
