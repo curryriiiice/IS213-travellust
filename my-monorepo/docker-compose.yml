@@ -118,7 +118,7 @@ services:
 
   hotel-search-wrapper:
     build:
-      context: ./apps/hotel-management
+      context: ./apps/hotel-search-wrapper
       dockerfile: Dockerfile
     ports:
       - '5007:5000'
@@ -127,20 +127,21 @@ services:
     environment:
       - SUPABASE_URL=${HOTELS_SUPABASE_URL}
       - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+      - FLASK_PORT=5000
     command:
       [
         'python',
         '-m',
         'flask',
         '--app',
-        'hotel_management.hotel_search_wrapper_app',
+        'hotel_search_wrapper_app',
         'run',
         '--host=0.0.0.0',
       ]
 
   saved-hotels:
     build:
-      context: ./apps/hotel-management
+      context: ./apps/saved-hotels
       dockerfile: Dockerfile
     ports:
       - '5008:5000'
@@ -149,13 +150,14 @@ services:
     environment:
       - SUPABASE_URL=${HOTELS_SUPABASE_URL}
       - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+      - FLASK_PORT=5000
     command:
       [
         'python',
         '-m',
         'flask',
         '--app',
-        'hotel_management.saved_hotels_app',
+        'saved_hotels_app',
         'run',
         '--host=0.0.0.0',
       ]
@@ -171,15 +173,12 @@ services:
     environment:
       - SUPABASE_URL=${HOTELS_SUPABASE_URL}
       - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+      - FLASK_PORT=5000
     command:
       [
         'python',
-        '-m',
-        'flask',
-        '--app',
-        'hotel_management.hotel_management_app',
-        'run',
-        '--host=0.0.0.0',
+        '-u',
+        'hotel_management/hotel_management_app.py',
       ]
 
   booked_tickets:
@@ -193,6 +192,33 @@ services:
     environment:
       - SUPABASE_URL=${BOOKED_TICKETS_SUPABASE_URL}
       - SUPABASE_KEY=${BOOKED_TICKETS_SUPABASE_KEY}
+
+  book-hotels:
+    build:
+      context: ./apps/book-hotels
+      dockerfile: Dockerfile
+    ports:
+      - '5012:5000'
+    env_file:
+      - .env
+    environment:
+      - TRIPS_ATOMIC_URL=http://trips_atomic:5000
+      - HOTEL_MANAGEMENT_URL=http://hotel-management:5000
+      - BOOKED_TICKETS_URL=http://booked_tickets:5000
+      - AMQP_URL=${BOOK_HOTELS_AMQP_URL}
+      - AMQP_EXCHANGE=${BOOK_HOTELS_AMQP_EXCHANGE}
+      - AMQP_ROUTING_KEY_ACTIVITY=${BOOK_HOTELS_AMQP_ROUTING_KEY_ACTIVITY}
+      - AMQP_ROUTING_KEY_ERROR=${BOOK_HOTELS_AMQP_ROUTING_KEY_ERROR}
+    command:
+      [
+        'python',
+        '-m',
+        'flask',
+        '--app',
+        'book_hotels.book_hotels_app',
+        'run',
+        '--host=0.0.0.0',
+      ]
 
   collaboration_service:
     build:
