@@ -1,8 +1,16 @@
+from crypt import methods
+
 from flask import Blueprint, request, jsonify
 from ..services.flight_plan_service import FlightPlanService
-from ..utils.api_errors import ExternalServiceError
+from ..services.hotel_plan_service import HotelPlanService
+from ..utils.api_errors import ExternalServiceError, ValidationError, NotFoundError
 
 plan_bp = Blueprint("plan", __name__)
+
+
+@plan_bp.route("/api/plan/flights/search", methods=["POST"])
+def search_flight():
+    return
 
 
 @plan_bp.route("/api/plan/flights/save", methods=["POST"])
@@ -100,3 +108,89 @@ def save_flight():
 
     except Exception as e:
         return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@plan_bp.route("/api/plan/flights/update", methods=["POST"])
+def update_flight():
+    return
+
+
+@plan_bp.route("/api/plan/flights/delete", methods=["POST"])
+def delete_flight():
+    return
+
+
+@plan_bp.route("/api/plan/hotels/save", methods=["POST"])
+def save_hotel():
+    """
+    Save a hotel via hotel-management service and update trips table
+
+    Request Body (flat structure):
+    {
+        "query": "Bali Resorts",
+        "check_in_date": "2026-04-01",
+        "check_out_date": "2026-04-08",
+        "trip_id": "550e8400-e29b-41d4-a716-446655440000",
+        "adults": 2,
+        "children": 0,
+        "currency": "SGD",
+        "gl": "sg",
+        "hl": "en",
+        "sort_by": 3,
+        "rating": 8,
+        "save_to_database": true,
+        "user_id" : uuid
+    }
+
+    Response:
+    {
+        "success": true,
+        "data": {
+            "hotel": {
+                "hotel_id": "uuid-string",
+                "name": "Hotel Name",
+                ...
+            },
+            "trip": {
+                "id": "trip-uuid",
+                "hotel_ids": ["hotel-id-1", "hotel-id-2", "new-hotel-id"],
+                ...
+            }
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"success": False, "error": "Request body is required"}), 400
+
+        # Save hotel and update trip via service
+        service = HotelPlanService()
+        result = service.save_hotel(data)
+
+        return jsonify({"success": True, "data": result}), 201
+
+    except ValidationError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except NotFoundError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except ExternalServiceError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except Exception as e:
+        return jsonify(
+            {"success": False, "error": f"Internal server error: {str(e)}"}
+        ), 500
+
+
+@plan_bp.route("/api/plan/hotels/update", methods=["POST"])
+def update_hotel():
+    return
+
+
+@plan_bp.route("/api/plan/hotels/delete", methods=["POST"])
+def delete_hotel():
+    return
