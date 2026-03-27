@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from http import HTTPStatus
 
 from flask import Flask, jsonify, request
@@ -9,6 +10,7 @@ from booked_tickets.repository import SupabaseBookedTicketRepository
 
 REQUIRED_CREATE_FIELDS = {"user_id", "f_h_a_id"}
 MUTABLE_FIELDS = {"cost", "paid_by", "cancelled"}
+UUID_FIELDS = {"user_id", "paid_by", "f_h_a_id"}
 
 
 def _validate_payload(payload: object) -> dict:
@@ -17,6 +19,15 @@ def _validate_payload(payload: object) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object.")
     return payload
+
+
+def _validate_uuid_fields(payload: dict) -> None:
+    for field in UUID_FIELDS:
+        if field in payload:
+            try:
+                uuid.UUID(str(payload[field]))
+            except (ValueError, AttributeError):
+                raise ValueError(f"'{field}' must be a valid UUID.")
 
 
 def _validate_create_payload(payload: dict) -> dict:
@@ -29,6 +40,8 @@ def _validate_create_payload(payload: dict) -> dict:
         raise ValueError(
             f"These fields cannot be set through this API: {', '.join(invalid_fields)}."
         )
+
+    _validate_uuid_fields(payload)
     return payload
 
 
@@ -40,6 +53,8 @@ def _validate_update_payload(payload: dict) -> dict:
         )
     if not payload:
         raise ValueError("Request body must contain at least one updatable field.")
+
+    _validate_uuid_fields(payload)
     return payload
 
 
@@ -56,9 +71,9 @@ def create_app(repository: SupabaseBookedTicketRepository | None = None) -> Flas
         tickets = repo.list_booked_tickets()
         return jsonify({"count": len(tickets), "data": tickets}), HTTPStatus.OK
 
-    @app.get("/api/users/<user_id>/booked_tickets")
-    def list_booked_tickets_by_user(user_id: str):
-        tickets = repo.list_booked_tickets_by_user(user_id)
+    @app.get("/api/users/<uuid:user_id>/booked_tickets")
+    def list_booked_tickets_by_user(user_id: uuid.UUID):
+        tickets = repo.list_booked_tickets_by_user(str(user_id))
         return jsonify({"count": len(tickets), "data": tickets}), HTTPStatus.OK
 
     @app.get("/api/booked_tickets/<booked_ticket_id>")

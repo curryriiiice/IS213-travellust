@@ -58,10 +58,10 @@ Response `200`:
 {
   "data": {
     "booked_ticket_id": 1,
-    "user_id": 1,
-    "f_h_a_id": 2,
+    "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "f_h_a_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
     "cost": "99.99",
-    "paid_by": "credit card",
+    "paid_by": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
     "cancelled": false
   }
 }
@@ -81,29 +81,29 @@ Response `404`:
 Request body:
 ```json
 {
-  "user_id": 1,
-  "f_h_a_id": 2,
+  "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "f_h_a_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
   "cost": 99.99,
-  "paid_by": "credit card"
+  "paid_by": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
 }
 ```
 
-| Field | Type | Required |
-|---|---|---|
-| `user_id` | integer | Yes |
-| `f_h_a_id` | integer | Yes |
-| `cost` | number | No |
-| `paid_by` | string | No |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `user_id` | UUID | Yes | UUID of the user who booked the ticket |
+| `f_h_a_id` | UUID | Yes | UUID of the flight/hotel/activity |
+| `cost` | number | No | Total cost of the booking |
+| `paid_by` | UUID | No | UUID of the user who paid for the tickets |
 
 Response `201`:
 ```json
 {
   "data": {
     "booked_ticket_id": 1,
-    "user_id": 1,
-    "f_h_a_id": 2,
+    "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "f_h_a_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
     "cost": "99.99",
-    "paid_by": "credit card",
+    "paid_by": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
     "cancelled": false
   }
 }
@@ -129,21 +129,21 @@ Request body (at least one field required):
 }
 ```
 
-| Field | Type |
-|---|---|
-| `cost` | number |
-| `paid_by` | string |
-| `cancelled` | boolean |
+| Field | Type | Description |
+|---|---|---|
+| `cost` | number | Updated cost of the booking |
+| `paid_by` | UUID | UUID of the user who paid for the tickets |
+| `cancelled` | boolean | Whether the booking is cancelled |
 
 Response `200`:
 ```json
 {
   "data": {
     "booked_ticket_id": 1,
-    "user_id": 1,
-    "f_h_a_id": 2,
+    "user_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "f_h_a_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
     "cost": "149.99",
-    "paid_by": "PayNow",
+    "paid_by": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
     "cancelled": true
   }
 }
