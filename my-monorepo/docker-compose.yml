@@ -194,6 +194,24 @@ services:
       - SUPABASE_URL=${BOOKED_TICKETS_SUPABASE_URL}
       - SUPABASE_KEY=${BOOKED_TICKETS_SUPABASE_KEY}
 
+  book-attractions:
+    build:
+      context: ./apps/book-attractions
+      dockerfile: Dockerfile
+    ports:
+      - '5011:5000'
+    env_file:
+      - .env
+    environment:
+      - PORT=5000
+      - ATTRACTIONS_SERVICE_URL=http://attractions:5000
+      - BOOKED_TICKETS_SERVICE_URL=http://booked_tickets:5000
+      - TRIPS_GET_TRIP_URL_TEMPLATE=http://trips_atomic:5000/api/trips/{trip_id}
+    depends_on:
+      - attractions
+      - booked_tickets
+      - trips_atomic
+
   collaboration_service:
     build:
       context: ./apps/collaboration_service

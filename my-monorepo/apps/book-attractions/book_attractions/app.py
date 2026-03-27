@@ -46,7 +46,7 @@ def _validate_payload(payload: object) -> dict:
 
 
 def _extract_trip_user_ids(trip: dict) -> list[str]:
-    for key in ("user_ids", "users", "traveler_ids", "members"):
+    for key in ("member_ids", "user_ids", "users", "traveler_ids", "members"):
         value = trip.get(key)
         if isinstance(value, list):
             extracted_ids = []
@@ -86,6 +86,25 @@ def _validate_trip_membership(trip_id: str, user_ids: list, trips_client: TripsC
 def _should_fail_booking(random_value: float | None = None) -> bool:
     value = random.random() if random_value is None else random_value
     return math.floor(value * 5) == 0
+
+
+def _validate_booked_ticket_record(
+    booked_ticket_record: dict,
+    ticket_holder_id,
+    attraction_id: str,
+) -> None:
+    if str(booked_ticket_record.get("user_id")) != str(ticket_holder_id):
+        raise HttpError(
+            "booked_tickets service returned a record for the wrong user."
+        )
+    if str(booked_ticket_record.get("f_h_a_id")) != str(attraction_id):
+        raise HttpError(
+            "booked_tickets service returned a record for the wrong attraction."
+        )
+    if booked_ticket_record.get("booked_ticket_id") is None:
+        raise HttpError(
+            "booked_tickets service did not return a booked_ticket_id."
+        )
 
 
 def create_app(
@@ -168,9 +187,15 @@ def create_app(
                 elif attraction.get("cost") is not None:
                     booked_ticket_payload["cost"] = attraction["cost"]
 
-                booked_ticket_records.append(
-                    booked_tickets.create_booked_ticket(booked_ticket_payload)
+                booked_ticket_record = booked_tickets.create_booked_ticket(
+                    booked_ticket_payload
                 )
+                _validate_booked_ticket_record(
+                    booked_ticket_record,
+                    ticket_holder_id,
+                    str(attraction["attraction_id"]),
+                )
+                booked_ticket_records.append(booked_ticket_record)
         except HttpError as exc:
             return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
 

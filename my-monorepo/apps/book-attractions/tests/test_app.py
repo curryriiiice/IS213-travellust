@@ -5,7 +5,7 @@ class FakeTripsClient:
     def get_trip(self, trip_id):
         if trip_id != "22222222-2222-2222-2222-222222222222":
             return None
-        return {"trip_id": trip_id, "user_ids": [1, 2, 3]}
+        return {"trip_id": trip_id, "member_ids": [1, 2, 3]}
 
 
 class FakeAttractionsClient:
@@ -26,6 +26,18 @@ class FakeBookedTicketsClient:
             "booked_ticket_id": payload["user_id"],
             "user_id": payload["user_id"],
             "f_h_a_id": payload["f_h_a_id"],
+            "cost": payload.get("cost"),
+            "paid_by": payload["paid_by"],
+            "cancelled": payload.get("cancelled", False),
+        }
+
+
+class MismatchedBookedTicketsClient:
+    def create_booked_ticket(self, payload):
+        return {
+            "booked_ticket_id": payload["user_id"],
+            "user_id": payload["user_id"],
+            "f_h_a_id": "wrong-attraction-id",
             "cost": payload.get("cost"),
             "paid_by": payload["paid_by"],
             "cancelled": payload.get("cancelled", False),
@@ -73,6 +85,7 @@ def test_book_attraction_success():
     assert data["booked_tickets"][0]["f_h_a_id"] == "11111111-1111-1111-1111-111111111111"
     assert data["resolved_trip_id"] == "22222222-2222-2222-2222-222222222222"
     assert data["booking_confirmation"] == "Booking successful."
+    assert data["booked_tickets"][0]["booked_ticket_id"] == 1
 
 
 def test_simulated_booking_failure():
@@ -98,6 +111,30 @@ def test_simulated_booking_failure():
     assert response.status_code == 503
     assert response.get_json()["data"]["f_h_a_id"] == "11111111-1111-1111-1111-111111111111"
     assert "Simulated booking failure" in response.get_json()["error"]
+
+
+def test_fails_if_booked_ticket_response_does_not_match_saved_attraction():
+    app = create_app(
+        attractions_client=FakeAttractionsClient(),
+        booked_tickets_client=MismatchedBookedTicketsClient(),
+        trips_client=FakeTripsClient(),
+        random_value_fn=lambda: 0.9,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/api/book-attractions",
+        json={
+            "user_id": [1],
+            "trip_id": "22222222-2222-2222-2222-222222222222",
+            "attraction_id": "11111111-1111-1111-1111-111111111111",
+            "cost": "99.99",
+            "paid_by": 1,
+        },
+    )
+
+    assert response.status_code == 502
+    assert "wrong attraction" in response.get_json()["error"]
 
 
 def test_requires_attraction_id():
