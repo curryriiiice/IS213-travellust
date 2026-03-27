@@ -10,7 +10,7 @@ flights_bp = Blueprint('flights', __name__)
 def search_flights():
     """
     POST /api/flights/search
-    Body: { origin, destination, datetime_arrival, datetime_departure }
+    Body: { origin, destination, datetime_departure }
     Returns: List of flight details
     """
     try:
@@ -21,8 +21,7 @@ def search_flights():
         results = service.search_flights(
             origin=data['origin'],
             destination=data['destination'],
-            datetime_departure=data['datetime_departure'],
-            datetime_arrival=data['datetime_arrival']
+            datetime_departure=data['datetime_departure']
         )
 
         return jsonify({

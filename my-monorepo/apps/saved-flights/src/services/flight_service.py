@@ -70,6 +70,17 @@ class FlightService:
             logger.error(f"Error updating flight: {str(e)}")
             raise
 
+    def update_flight_with_validation(self, flight_id: str, data: dict) -> Dict[str, Any]:
+        """Update a flight with validation (checks if exists and not deleted)"""
+        try:
+            logger.debug(f"Updating flight with validation: {flight_id}")
+            flight = self.client.update_flight_with_validation(flight_id, data)
+            logger.info(f"Successfully updated flight {flight_id}")
+            return flight
+        except Exception as e:
+            logger.error(f"Error updating flight with validation: {str(e)}")
+            raise
+
     def delete_flight(self, flight_id: str) -> bool:
         """Delete a flight"""
         try:
@@ -79,4 +90,15 @@ class FlightService:
             return True
         except Exception as e:
             logger.error(f"Error deleting flight: {str(e)}")
+            raise
+
+    def soft_delete_flight(self, flight_id: str) -> str:
+        """Soft delete a flight by setting deleted column to TRUE"""
+        try:
+            logger.debug(f"Soft deleting flight: {flight_id}")
+            result_id = self.client.soft_delete_flight(flight_id)
+            logger.info(f"Successfully soft deleted flight {flight_id}")
+            return result_id
+        except Exception as e:
+            logger.error(f"Error soft deleting flight: {str(e)}")
             raise

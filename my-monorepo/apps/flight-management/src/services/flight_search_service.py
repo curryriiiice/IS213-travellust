@@ -10,7 +10,7 @@ class FlightSearchService:
         self.search_client = SearchWrapperClient(config)
 
     def search_flights(self, origin: str, destination: str,
-                      datetime_departure: str, datetime_arrival: str) -> Dict:
+                      datetime_departure: str) -> Dict:
         """
         Search flights by orchestrating with flight-search-wrapper
         Returns the full response from flight-search-wrapper
@@ -18,6 +18,5 @@ class FlightSearchService:
         return self.search_client.search_flights(
             origin=origin,
             destination=destination,
-            datetime_departure=datetime_departure,
-            datetime_arrival=datetime_arrival
+            datetime_departure=datetime_departure
         )
