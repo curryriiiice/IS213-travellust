@@ -163,11 +163,25 @@ Service for managing saved hotel records in the database.
 - **Response**: `{"data": {...}}`
 - **Error**: 404 if hotel not found
 
-### Delete Hotel
-- **DELETE** `/api/hotels/<hotel_id>`
-- **Description**: Delete a hotel by ID
-- **Response**: `{"message": "Hotel deleted successfully", "hotel_id": "..."}`
-- **Error**: 404 if hotel not found
+### Soft Delete Hotels
+- **POST** `/api/hotels/soft-delete`
+- **Description**: Soft delete multiple hotels by setting the `deleted` attribute to true
+- **Body**:
+  ```json
+  {
+    "hotel_ids": ["hotel_uuid_1", "hotel_uuid_2"]
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "message": "Hotels soft deleted successfully",
+    "deleted_count": 2,
+    "deleted_hotel_ids": ["hotel_uuid_1", "hotel_uuid_2"]
+  }
+  ```
+- **Error**: 400 if `hotel_ids` is missing or not an array
+- **Note**: Hotels remain in database but are marked as deleted
 
 ---
 
@@ -230,6 +244,41 @@ Composite orchestrator service for hotel search and management operations.
   2. Searches for latest price using hotel-search-wrapper
   3. Updates hotel's rate_per_night in database
   4. Returns old and new price
+
+### Soft Delete Hotels from Trip
+- **POST** `/api/hotel/delete`
+- **Description**: Soft delete multiple hotels from a specific trip
+- **Body**:
+  ```json
+  {
+    "trip_id": "trip_uuid",
+    "hotel_ids": ["hotel_uuid_1", "hotel_uuid_2"]
+  }
+  ```
+- **Required Fields**: `trip_id`, `hotel_ids` (array of hotel UUIDs)
+- **Response**:
+  ```json
+  {
+    "data": {
+      "updated_trip": {
+        "trip_id": "trip_uuid",
+        "hotel_ids": ["hotel_uuid_3", "hotel_uuid_4"],
+        ...
+      },
+      "soft_deleted_hotels": ["hotel_uuid_1", "hotel_uuid_2"],
+      "deleted_count": 2,
+      "status": "success",
+      "message": "Hotels soft deleted successfully from trip"
+    }
+  }
+  ```
+- **Error**: 400 if `trip_id` or `hotel_ids` is missing, or if `hotel_ids` is not an array, 404 if trip not found
+- **Process**:
+  1. Retrieves current trip data from trips_atomic
+  2. Updates trip's `hotel_ids` array to remove specified hotel_ids
+  3. Updates `deleted` attribute to true in saved-hotels service
+  4. Returns updated trip and list of soft deleted hotel IDs
+- **Note**: Hotels remain in database but are marked as deleted and removed from trip's hotel_ids array
 
 ---
 

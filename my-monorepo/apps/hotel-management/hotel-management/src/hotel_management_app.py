@@ -123,5 +123,38 @@ def fetch_latest_price(hotel_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/hotel/delete", methods=["POST"])
+def soft_delete_hotels_from_trip():
+    """Soft delete multiple hotels from a specific trip."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body is required"}), 400
+
+        trip_id = data.get("trip_id")
+        hotel_ids = data.get("hotel_ids")
+
+        if not trip_id:
+            return jsonify({"error": "trip_id is required"}), 400
+
+        if not hotel_ids:
+            return jsonify({"error": "hotel_ids is required"}), 400
+
+        if not isinstance(hotel_ids, list):
+            return jsonify({"error": "hotel_ids must be an array"}), 400
+
+        result = hotel_management_service.soft_delete_hotels_from_trip(
+            trip_id=trip_id,
+            hotel_ids=hotel_ids,
+        )
+
+        if result.get("status") == "error":
+            return jsonify({"error": result.get("error")}), 500
+
+        return jsonify({"data": result}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
