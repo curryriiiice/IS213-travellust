@@ -190,7 +190,7 @@ services:
       context: ./apps/book-attractions
       dockerfile: Dockerfile
     ports:
-      - '5011:5000'
+      - '5015:5000'
     env_file:
       - .env
     environment:
