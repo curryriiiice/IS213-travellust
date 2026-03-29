@@ -712,6 +712,108 @@ class HotelManagementService:
         """Return a friendly greeting for health check."""
         return "Hello hotel-management - Composite orchestrator service is running"
 
+    def soft_delete_hotels_from_trip(
+        self,
+        trip_id: str,
+        hotel_ids: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Soft delete multiple hotels from a trip.
+
+        This function:
+        1. Updates the trip's hotel_ids array to remove the specified hotel_ids
+        2. Updates the deleted attribute to true in the saved_hotels service
+
+        Args:
+            trip_id: Trip UUID to remove hotels from
+            hotel_ids: List of hotel UUIDs to soft delete
+
+        Returns:
+            Dictionary containing:
+            - updated_trip: Updated trip data
+            - soft_deleted_hotels: List of soft deleted hotel IDs
+            - status: Operation status
+        """
+        try:
+            import requests
+
+            # Step 1: Get the current trip data
+            trip_url = f"{self.trips_service_url}/api/trips/{trip_id}"
+            trip_response = requests.get(trip_url, timeout=10)
+
+            if trip_response.status_code != 200:
+                return {
+                    "updated_trip": None,
+                    "soft_deleted_hotels": [],
+                    "status": "error",
+                    "error": "Trip not found",
+                }
+
+            trip_data = trip_response.json().get("data", {})
+
+            # Step 2: Update the trip's hotel_ids array to remove specified hotel_ids
+            existing_hotel_ids = trip_data.get("hotel_ids", [])
+            if existing_hotel_ids is None:
+                existing_hotel_ids = []
+
+            # Create new array without the specified hotel_ids
+            updated_hotel_ids = [hid for hid in existing_hotel_ids if hid not in hotel_ids]
+
+            # Update the trip with the new hotel_ids array
+            update_response = requests.put(
+                trip_url,
+                json={"hotel_ids": updated_hotel_ids},
+                timeout=10,
+            )
+
+            if update_response.status_code != 200:
+                return {
+                    "updated_trip": None,
+                    "soft_deleted_hotels": [],
+                    "status": "error",
+                    "error": "Failed to update trip's hotel_ids array",
+                }
+
+            updated_trip = update_response.json().get("data", {})
+
+            # Step 3: Soft delete hotels in saved_hotels service
+            soft_delete_url = f"{self.saved_hotels_service_url}/api/hotels/soft-delete"
+            soft_delete_payload = {"hotel_ids": hotel_ids}
+
+            soft_delete_response = requests.post(
+                soft_delete_url,
+                json=soft_delete_payload,
+                timeout=10,
+            )
+
+            if soft_delete_response.status_code != 200:
+                # Trip was updated but soft delete failed
+                return {
+                    "updated_trip": updated_trip,
+                    "soft_deleted_hotels": [],
+                    "status": "error",
+                    "error": "Failed to soft delete hotels in saved_hotels service",
+                }
+
+            soft_delete_result = soft_delete_response.json()
+            soft_deleted_hotels = soft_delete_result.get("deleted_hotel_ids", [])
+
+            return {
+                "updated_trip": updated_trip,
+                "soft_deleted_hotels": soft_deleted_hotels,
+                "deleted_count": len(soft_deleted_hotels),
+                "status": "success",
+                "message": "Hotels soft deleted successfully from trip",
+            }
+
+        except Exception as e:
+            return {
+                "updated_trip": None,
+                "soft_deleted_hotels": [],
+                "status": "error",
+                "error": str(e),
+            }
+
 
 # Initialize the service instance
 hotel_management_service = HotelManagementService()
