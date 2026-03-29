@@ -37,6 +37,7 @@ class FakeRepository:
                 "visit_time": "2026-03-20T12:00:00Z",
                 "duration_minutes": 180,
                 "cost": "32.50",
+                "deleted": False,
                 "created_at": "2026-03-20T10:00:00Z",
                 "updated_at": "2026-03-20T10:00:00Z",
             },
@@ -49,6 +50,7 @@ class FakeRepository:
                 "visit_time": "2026-03-20T15:00:00Z",
                 "duration_minutes": 60,
                 "cost": "40.00",
+                "deleted": False,
                 "created_at": "2026-03-20T11:00:00Z",
                 "updated_at": "2026-03-20T11:00:00Z",
             },
@@ -61,13 +63,27 @@ class FakeRepository:
                 "visit_time": "2026-04-01T09:00:00Z",
                 "duration_minutes": 90,
                 "cost": "25.00",
+                "deleted": False,
                 "created_at": "2026-04-01T08:00:00Z",
                 "updated_at": "2026-04-01T08:00:00Z",
+            },
+            "66666666-6666-6666-6666-666666666666": {
+                "attraction_id": "66666666-6666-6666-6666-666666666666",
+                "trip_id": "22222222-2222-2222-2222-222222222222",
+                "name": "Soft Deleted Attraction",
+                "location": "Singapore",
+                "gmaps_link": "https://maps.google.com/deleted",
+                "visit_time": "2026-03-20T18:00:00Z",
+                "duration_minutes": 45,
+                "cost": "10.00",
+                "deleted": True,
+                "created_at": "2026-03-20T12:00:00Z",
+                "updated_at": "2026-03-20T12:00:00Z",
             }
         }
 
     def list_attractions(self):
-        return list(self.records.values())
+        return [record for record in self.records.values() if not record.get("deleted")]
 
     def list_catalog_attractions(self, search=None):
         records = list(self.catalog_records.values())
@@ -86,15 +102,20 @@ class FakeRepository:
 
     def list_attractions_by_trip(self, trip_id):
         return [
-            record for record in self.records.values() if record["trip_id"] == trip_id
+            record
+            for record in self.records.values()
+            if record["trip_id"] == trip_id and not record.get("deleted")
         ]
 
     def get_attraction(self, attraction_id):
-        return self.records.get(attraction_id)
+        record = self.records.get(attraction_id)
+        if record and not record.get("deleted"):
+            return record
+        return None
 
     def create_attraction(self, payload):
         next_id = "33333333-3333-3333-3333-333333333333"
-        record = {"attraction_id": next_id, **payload}
+        record = {"attraction_id": next_id, "deleted": False, **payload}
         self.records[next_id] = record
         return record
 
@@ -111,13 +132,18 @@ class FakeRepository:
             "location": catalog_record["location"],
             "gmaps_link": catalog_record["gmaps_link"],
             "cost": catalog_record["cost"],
+            "deleted": False,
             **(payload or {}),
         }
         self.records[next_id] = record
         return record
 
-    def update_attraction(self, attraction_id, payload):
+    def update_attraction(self, trip_id, attraction_id, payload):
         if attraction_id not in self.records:
+            return None
+        if self.records[attraction_id]["trip_id"] != trip_id:
+            return None
+        if self.records[attraction_id].get("deleted"):
             return None
         self.records[attraction_id] = {
             **self.records[attraction_id],
@@ -126,13 +152,52 @@ class FakeRepository:
         }
         return self.records[attraction_id]
 
-    def delete_attraction(self, attraction_id):
-        return self.records.pop(attraction_id, None)
+    def soft_delete_attraction(self, trip_id, attraction_id):
+        if attraction_id not in self.records:
+            return None
+        if self.records[attraction_id]["trip_id"] != trip_id:
+            return None
+        if self.records[attraction_id].get("deleted"):
+            return None
+        self.records[attraction_id]["deleted"] = True
+        return self.records[attraction_id]
+
+
+class FakeTripsClient:
+    def __init__(self):
+        self.trips = {
+            "22222222-2222-2222-2222-222222222222": {
+                "id": "22222222-2222-2222-2222-222222222222",
+                "attraction_ids": ["11111111-1111-1111-1111-111111111111"],
+            },
+            "66666666-6666-6666-6666-666666666666": {
+                "id": "66666666-6666-6666-6666-666666666666",
+                "attraction_ids": ["55555555-5555-5555-5555-555555555555"],
+            },
+        }
+
+    def get_trip(self, trip_id):
+        return self.trips.get(trip_id)
+
+    def append_attraction_id(self, trip_id, attraction_id):
+        trip = self.trips.get(trip_id)
+        if trip is None:
+            raise AssertionError("append_attraction_id called for missing trip")
+        if attraction_id not in trip["attraction_ids"]:
+            trip["attraction_ids"].append(attraction_id)
+        return trip
+
+
+def make_client():
+    app = create_app(
+        repository=FakeRepository(),
+        trips_client=FakeTripsClient(),
+    )
+    return app.test_client()
 
 
 def test_healthcheck():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get("/health")
 
@@ -141,8 +206,7 @@ def test_healthcheck():
 
 
 def test_list_attractions():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get("/api/attractions")
 
@@ -157,8 +221,7 @@ def test_list_attractions():
 
 
 def test_list_catalog_attractions():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get("/api/catalog/attractions")
 
@@ -172,8 +235,7 @@ def test_list_catalog_attractions():
 
 
 def test_search_catalog_attractions():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get("/api/catalog/attractions?search=sentosa")
 
@@ -184,8 +246,7 @@ def test_search_catalog_attractions():
 
 
 def test_get_catalog_attraction_by_id():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get(
         "/api/catalog/attractions/aaaaaaa1-1111-1111-1111-111111111111"
@@ -199,8 +260,7 @@ def test_get_catalog_attraction_by_id():
 
 
 def test_list_attractions_by_trip_id():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get(
         "/api/trips/22222222-2222-2222-2222-222222222222/attractions"
@@ -216,8 +276,7 @@ def test_list_attractions_by_trip_id():
 
 
 def test_get_attraction_by_id():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get("/api/attractions/11111111-1111-1111-1111-111111111111")
 
@@ -229,8 +288,7 @@ def test_get_attraction_by_id():
 
 
 def test_create_attraction():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post(
         "/api/attractions",
@@ -248,8 +306,7 @@ def test_create_attraction():
 
 
 def test_create_attraction_from_catalog():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post(
         "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog"
@@ -264,9 +321,46 @@ def test_create_attraction_from_catalog():
     assert data["name"] == "Gardens by the Bay"
 
 
+def test_create_attraction_in_trip_manually():
+    client = make_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions",
+        json={
+            "name": "Universal Studios Singapore",
+            "location": "Sentosa",
+            "duration_minutes": 240,
+            "cost": "88.00",
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.get_json()["data"]
+    assert data["trip_id"] == "22222222-2222-2222-2222-222222222222"
+    assert data["name"] == "Universal Studios Singapore"
+
+
+def test_create_attraction_in_trip_from_catalog():
+    client = make_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions",
+        json={
+            "catalog_attraction_id": "aaaaaaa1-1111-1111-1111-111111111111",
+            "visit_time": "2026-03-21T12:00:00Z",
+            "duration_minutes": 180,
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.get_json()["data"]
+    assert data["trip_id"] == "22222222-2222-2222-2222-222222222222"
+    assert data["catalog_attraction_id"] == "aaaaaaa1-1111-1111-1111-111111111111"
+    assert data["name"] == "Gardens by the Bay"
+
+
 def test_create_attraction_from_catalog_requires_catalog_id():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post(
         "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog",
@@ -278,8 +372,7 @@ def test_create_attraction_from_catalog_requires_catalog_id():
 
 
 def test_create_attraction_from_catalog_rejects_invalid_fields():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post(
         "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog"
@@ -292,8 +385,7 @@ def test_create_attraction_from_catalog_rejects_invalid_fields():
 
 
 def test_create_attraction_from_catalog_not_found():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post(
         "/api/trips/22222222-2222-2222-2222-222222222222/attractions/from-catalog"
@@ -305,9 +397,23 @@ def test_create_attraction_from_catalog_not_found():
     assert response.get_json()["error"] == "Catalog attraction not found"
 
 
+def test_create_trip_attraction_requires_existing_trip():
+    client = make_client()
+
+    response = client.post(
+        "/api/trips/missing-trip/attractions",
+        json={
+            "name": "Universal Studios Singapore",
+            "location": "Sentosa",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "Trip missing-trip was not found"
+
+
 def test_create_requires_trip_id_and_name():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post("/api/attractions", json={"location": "Singapore"})
 
@@ -315,9 +421,35 @@ def test_create_requires_trip_id_and_name():
     assert "Missing required fields" in response.get_json()["error"]
 
 
+def test_trip_scoped_create_requires_name_or_catalog_id():
+    client = make_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions",
+        json={"location": "Singapore"},
+    )
+
+    assert response.status_code == 400
+    assert "Missing required fields" in response.get_json()["error"]
+
+
+def test_trip_scoped_catalog_create_rejects_invalid_fields():
+    client = make_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions",
+        json={
+            "catalog_attraction_id": "aaaaaaa1-1111-1111-1111-111111111111",
+            "name": "Do not allow override",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "cannot be set" in response.get_json()["error"]
+
+
 def test_create_rejects_non_schema_fields():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post(
         "/api/attractions",
@@ -333,8 +465,7 @@ def test_create_rejects_non_schema_fields():
 
 
 def test_reject_non_object_payload():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.post("/api/attractions", json=["bad"])
 
@@ -343,11 +474,10 @@ def test_reject_non_object_payload():
 
 
 def test_update_attraction():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.put(
-        "/api/attractions/11111111-1111-1111-1111-111111111111",
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions/11111111-1111-1111-1111-111111111111",
         json={"duration_minutes": 240, "cost": "40.00"},
     )
 
@@ -356,11 +486,10 @@ def test_update_attraction():
 
 
 def test_update_rejects_primary_key_changes():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.put(
-        "/api/attractions/11111111-1111-1111-1111-111111111111",
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions/11111111-1111-1111-1111-111111111111",
         json={"attraction_id": "other-id"},
     )
 
@@ -369,20 +498,65 @@ def test_update_rejects_primary_key_changes():
 
 
 def test_delete_attraction():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
-    response = client.delete("/api/attractions/11111111-1111-1111-1111-111111111111")
+    response = client.delete(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions/11111111-1111-1111-1111-111111111111"
+    )
 
     assert response.status_code == 200
-    assert response.get_json()["message"] == "Attraction deleted"
+    assert response.get_json()["message"] == "Attraction soft deleted"
+    assert response.get_json()["data"]["deleted"] is True
+
+
+def test_update_rejects_wrong_trip():
+    client = make_client()
+
+    response = client.put(
+        "/api/trips/different-trip/attractions/11111111-1111-1111-1111-111111111111",
+        json={"duration_minutes": 240},
+    )
+
+    assert response.status_code == 404
+
+
+def test_deleted_attraction_not_returned_in_lists():
+    client = make_client()
+
+    response = client.get(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions"
+    )
+
+    assert response.status_code == 200
+    ids = {record["attraction_id"] for record in response.get_json()["data"]}
+    assert "66666666-6666-6666-6666-666666666666" not in ids
 
 
 def test_not_found_returns_404():
-    app = create_app(repository=FakeRepository())
-    client = app.test_client()
+    client = make_client()
 
     response = client.get("/api/attractions/999")
 
     assert response.status_code == 404
     assert response.get_json()["error"] == "Attraction not found"
+
+
+def test_create_adds_attraction_id_to_trip():
+    trips_client = FakeTripsClient()
+    app = create_app(
+        repository=FakeRepository(),
+        trips_client=trips_client,
+    )
+    client = app.test_client()
+
+    response = client.post(
+        "/api/trips/22222222-2222-2222-2222-222222222222/attractions",
+        json={
+            "name": "Universal Studios Singapore",
+            "location": "Sentosa",
+        },
+    )
+
+    assert response.status_code == 201
+    created_id = response.get_json()["data"]["attraction_id"]
+    assert created_id in trips_client.trips["22222222-2222-2222-2222-222222222222"]["attraction_ids"]

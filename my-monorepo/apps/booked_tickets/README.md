@@ -84,7 +84,7 @@ Request body:
   "user_id": 1,
   "f_h_a_id": 2,
   "cost": 99.99,
-  "paid_by": "credit card"
+  "paid_by": 1
 }
 ```
 
@@ -93,7 +93,7 @@ Request body:
 | `user_id` | integer | Yes |
 | `f_h_a_id` | integer | Yes |
 | `cost` | number | No |
-| `paid_by` | string | No |
+| `paid_by` | integer | Yes |
 
 Response `201`:
 ```json
@@ -103,7 +103,7 @@ Response `201`:
     "user_id": 1,
     "f_h_a_id": 2,
     "cost": "99.99",
-    "paid_by": "credit card",
+    "paid_by": 1,
     "cancelled": false
   }
 }

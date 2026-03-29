@@ -1,0 +1,1 @@
+"""book-attractions application package."""
