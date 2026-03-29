@@ -88,7 +88,7 @@ def start_consumer() -> None:
     channel = connection.channel()
     channel.exchange_declare(exchange=EXCHANGE_NAME, exchange_type="topic", durable=True)
 
-    result = channel.queue_declare(queue="", exclusive=True)
+    result = channel.queue_declare(queue="notifications_queue", durable=True, exclusive=False)
     queue_name = result.method.queue
 
     for key in ROUTING_KEYS:
