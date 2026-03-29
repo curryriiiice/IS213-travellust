@@ -28,3 +28,6 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     app.run(host='0.0.0.0', port=Config.FLASK_PORT, debug=True)
+elif __name__ == 'src.app':  # When run as module with `python -m src.app`
+    app = create_app()
+    app.run(host='0.0.0.0', port=Config.FLASK_PORT, debug=True)

@@ -2,11 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements first for caching
-COPY requirements.txt .
+RUN apt-get update && apt-get install -y gcc curl && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml uv.lock* README.md ./
+
+RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY src/ ./src/
@@ -15,4 +17,5 @@ COPY src/ ./src/
 EXPOSE 5000
 
 # Run application
-CMD ["python", "-m", "src.app"]
+CMD ["uv", "run", "python", "-m", "src.app"]
+
