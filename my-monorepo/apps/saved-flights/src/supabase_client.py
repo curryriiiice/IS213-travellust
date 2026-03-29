@@ -144,6 +144,64 @@ class SupabaseFlightClient:
                 raise Exception(f"Flight with id {flight_id} not found")
             raise Exception(f"Error updating flight: {str(e)}")
 
+    def update_flight_with_validation(self, flight_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update a flight with validation (checks if exists and not deleted)"""
+        try:
+            # Check if the flight exists
+            result = self.client.table('flights').select('*').eq('flight_id', flight_id).execute()
+
+            if not result.data or len(result.data) == 0:
+                raise Exception("flight_id does not exist")
+
+            flight = result.data[0]
+
+            # Check if already deleted
+            if flight.get('deleted'):
+                raise Exception("flight has already been deleted")
+
+            # Check if at least one field is provided for update
+            updateable_fields = {'flight_number', 'airline', 'datetime_departure', 'datetime_arrival', 'external_link', 'trip_id', 'cost'}
+            fields_to_update = set(data.keys()) & updateable_fields
+
+            if len(fields_to_update) == 0:
+                raise Exception("at least one field must updated")
+
+            # Prepare update data (only include fields that are provided)
+            update_data = {}
+            if 'flight_number' in data:
+                update_data['flight_number'] = data['flight_number']
+            if 'airline' in data:
+                update_data['airline'] = data['airline']
+            if 'datetime_departure' in data:
+                dt_dep = data.get('datetime_departure_parsed') or data['datetime_departure']
+                update_data['datetime_departure'] = dt_dep.isoformat() if hasattr(dt_dep, 'isoformat') else dt_dep
+            if 'datetime_arrival' in data:
+                dt_arr = data.get('datetime_arrival_parsed') or data['datetime_arrival']
+                update_data['datetime_arrival'] = dt_arr.isoformat() if hasattr(dt_arr, 'isoformat') else dt_arr
+            if 'external_link' in data:
+                update_data['external_link'] = data['external_link']
+            if 'trip_id' in data:
+                update_data['trip_id'] = data['trip_id']
+            if 'cost' in data:
+                update_data['cost'] = data['cost']
+
+            # Update in Supabase
+            result = self.client.table('flights').update(update_data).eq('flight_id', flight_id).execute()
+
+            if not result.data or len(result.data) == 0:
+                raise Exception("flight_id does not exist")
+
+            return self._to_dict(result.data[0])
+
+        except Exception as e:
+            if "does not exist" in str(e).lower():
+                raise Exception("flight_id does not exist")
+            if "already been deleted" in str(e).lower():
+                raise Exception("flight has already been deleted")
+            if "at least one field must updated" in str(e).lower():
+                raise Exception("at least one field must updated")
+            raise Exception(f"Error updating flight: {str(e)}")
+
     def delete_flight(self, flight_id: str) -> bool:
         """Delete a flight"""
         try:
@@ -158,6 +216,37 @@ class SupabaseFlightClient:
             if "not found" in str(e).lower():
                 raise Exception(f"Flight with id {flight_id} not found")
             raise Exception(f"Error deleting flight: {str(e)}")
+
+    def soft_delete_flight(self, flight_id: str) -> str:
+        """Soft delete a flight by setting deleted column to TRUE"""
+        try:
+            # First check if the flight exists
+            result = self.client.table('flights').select('*').eq('flight_id', flight_id).execute()
+
+            if not result.data or len(result.data) == 0:
+                raise Exception(f"flight_id does not exist")
+
+            flight = result.data[0]
+
+            # Check if already deleted
+            if flight.get('deleted'):
+                raise Exception("flight has already been deleted")
+
+            # Soft delete by setting deleted to TRUE
+            update_result = self.client.table('flights').update({'deleted': True}).eq('flight_id', flight_id).execute()
+
+            if not update_result.data or len(update_result.data) == 0:
+                raise Exception(f"Failed to soft delete flight with id {flight_id}")
+
+            return flight_id
+
+        except Exception as e:
+            # Re-raise with the specific error messages
+            if "does not exist" in str(e).lower():
+                raise Exception("flight_id does not exist")
+            if "already been deleted" in str(e).lower():
+                raise Exception("flight has already been deleted")
+            raise Exception(f"Error soft deleting flight: {str(e)}")
 
     def test_connection(self) -> bool:
         """Test if Supabase connection is working"""

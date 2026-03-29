@@ -9,7 +9,7 @@ class SearchWrapperClient:
         self.base_url = f"http://{config.SEARCH_WRAPPER_HOST}:{config.SEARCH_WRAPPER_PORT}"
 
     def search_flights(self, origin: str, destination: str,
-                      datetime_departure: str, datetime_arrival: str) -> Dict:
+                      datetime_departure: str) -> Dict:
         """
         Call flight-search-wrapper service
         Returns the full response from flight-search-wrapper
@@ -20,8 +20,7 @@ class SearchWrapperClient:
                 json={
                     'origin': origin,
                     'destination': destination,
-                    'datetime_departure': datetime_departure,
-                    'datetime_arrival': datetime_arrival
+                    'datetime_departure': datetime_departure
                 },
                 timeout=30
             )

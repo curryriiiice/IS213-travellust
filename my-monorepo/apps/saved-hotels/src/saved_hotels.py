@@ -216,21 +216,25 @@ class SavedHotelsService:
         except Exception as e:
             raise Exception(f"Error updating hotel: {str(e)}")
 
-    def delete_hotel(self, hotel_id: str) -> bool:
+    def soft_delete_hotels(self, hotel_ids: List[str]) -> List[str]:
         """
-        Delete a saved hotel.
+        Soft delete multiple hotels by setting the deleted attribute to true.
 
         Args:
-            hotel_id: Hotel UUID to delete
+            hotel_ids: List of hotel UUIDs to soft delete
 
         Returns:
-            True if successful, False otherwise
+            List of successfully soft deleted hotel IDs
         """
         try:
-            result = supabase.table(self.table_name).delete().eq("hotel_id", hotel_id).execute()
-            return len(result.data) > 0
+            deleted_hotels = []
+            for hotel_id in hotel_ids:
+                result = supabase.table(self.table_name).update({"deleted": True}).eq("hotel_id", hotel_id).execute()
+                if result.data:
+                    deleted_hotels.append(hotel_id)
+            return deleted_hotels
         except Exception as e:
-            raise Exception(f"Error deleting hotel: {str(e)}")
+            raise Exception(f"Error soft deleting hotels: {str(e)}")
 
     def health_check(self) -> str:
         """Return a friendly greeting for health check."""

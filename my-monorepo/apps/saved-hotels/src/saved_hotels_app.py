@@ -121,14 +121,27 @@ def update_hotel(hotel_id):
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/hotels/<hotel_id>", methods=["DELETE"])
-def delete_hotel(hotel_id):
-    """DELETE a hotel."""
+@app.route("/api/hotels/soft-delete", methods=["POST"])
+def soft_delete_hotels():
+    """Soft delete multiple hotels by setting deleted attribute to true."""
     try:
-        deleted = saved_hotels_service.delete_hotel(hotel_id)
-        if not deleted:
-            return jsonify({"error": "Hotel not found"}), 404
-        return jsonify({"message": "Hotel deleted successfully", "hotel_id": hotel_id}), 200
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body is required"}), 400
+
+        hotel_ids = data.get("hotel_ids")
+        if not hotel_ids:
+            return jsonify({"error": "hotel_ids is required"}), 400
+
+        if not isinstance(hotel_ids, list):
+            return jsonify({"error": "hotel_ids must be an array"}), 400
+
+        deleted_hotels = saved_hotels_service.soft_delete_hotels(hotel_ids)
+        return jsonify({
+            "message": "Hotels soft deleted successfully",
+            "deleted_count": len(deleted_hotels),
+            "deleted_hotel_ids": deleted_hotels,
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
