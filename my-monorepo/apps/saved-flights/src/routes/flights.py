@@ -27,13 +27,13 @@ def create_flight():
 
         logger.info(f"Flight created successfully with ID: {flight_id}")
 
-        publish_event(
-            trip_id=data.get('trip_id'),
-            event_type='FLIGHT_ADDED',
-            data={**data, 'flight_id': flight_id},
-            user_id=data.get('user_id')
-
-        )
+        # publish_event(
+        #     trip_id=data.get('trip_id'),
+        #     event_type='FLIGHT_ADDED',
+        #     data={**data, 'flight_id': flight_id},
+        #     user_id=data.get('user_id')
+        #
+        # )
         return jsonify({'success': True, 'data': {'flight_id': flight_id}}), 201
     except ValueError as e:
         logger.warning(f"Validation error creating flight: {str(e)}")
