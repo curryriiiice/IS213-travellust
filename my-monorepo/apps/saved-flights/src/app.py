@@ -21,6 +21,11 @@ def create_app():
     # Register blueprints
     app.register_blueprint(flights_bp)
 
+    # Health check endpoint
+    @app.route('/api/health')
+    def health_check():
+        return {'status': 'healthy', 'service': 'saved-flights'}
+
     # Global error handlers
     @app.errorhandler(404)
     def handle_not_found(error):
@@ -34,5 +39,8 @@ def create_app():
 
 
 if __name__ == '__main__':
+    app = create_app()
+    app.run(host='0.0.0.0', port=Config.FLASK_PORT, debug=True)
+elif __name__ == 'src.app':  # When run as module with `python -m src.app`
     app = create_app()
     app.run(host='0.0.0.0', port=Config.FLASK_PORT, debug=True)
