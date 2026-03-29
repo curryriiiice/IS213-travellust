@@ -3,7 +3,7 @@ from datetime import datetime
 
 def validate_flight_search_params(data: dict) -> None:
     """Validate flight search parameters"""
-    required_fields = ['origin', 'destination', 'datetime_departure', 'datetime_arrival']
+    required_fields = ['origin', 'destination', 'datetime_departure']
 
     for field in required_fields:
         if field not in data:
@@ -19,9 +19,8 @@ def validate_flight_search_params(data: dict) -> None:
     if not destination or len(destination) != 3 or not destination.isalpha():
         raise ValueError("destination must be a 3-letter IATA airport code")
 
-    # Validate datetime format
+    # Validate datetime_departure (ISO 8601 format)
     try:
         datetime.fromisoformat(data['datetime_departure'].replace('Z', '+00:00'))
-        datetime.fromisoformat(data['datetime_arrival'].replace('Z', '+00:00'))
     except (ValueError, AttributeError):
-        raise ValueError("datetime_departure and datetime_arrival must be valid ISO 8601 format")
+        raise ValueError("datetime_departure must be valid ISO 8601 format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")

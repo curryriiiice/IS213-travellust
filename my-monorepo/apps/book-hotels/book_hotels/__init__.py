@@ -1,0 +1,1 @@
+"""Book Hotels Composite Microservice."""

@@ -9,9 +9,10 @@ class FlightSaveService:
             config = Config()
         self.saved_flights_client = SavedFlightsClient(config)
 
-    def save_flight(self, data: Dict) -> int:
-        """
-        Save flight by orchestrating with saved-flghts
-        Returns flight_id
-        """
-        return self.saved_flights_client.create_flight(data)
+    def save_flight(self, data: Dict) -> Dict:
+        flight_data = {
+            **data.get('flight_details', {}),
+            'trip_id': data.get('trip_id'),
+            'cost': data.get('cost')
+        }
+        return self.saved_flights_client.create_flight(flight_data)

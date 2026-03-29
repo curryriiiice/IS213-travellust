@@ -14,16 +14,11 @@ services:
     env_file:
       - .env
     environment:
+      - SERPAPI_KEY=${FLIGHTS_SERPAPI_KEY}
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          'CMD',
-          'python',
-          '-c',
-          "import requests; requests.get('http://localhost:5000/api/health')",
-        ]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -47,6 +42,8 @@ services:
       test:
         [
           'CMD',
+          'uv',
+          'run',
           'python',
           '-c',
           "import requests; requests.get('http://localhost:5000/api/health')",
@@ -75,13 +72,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          'CMD',
-          'python',
-          '-c',
-          "import requests; requests.get('http://localhost:5000/api/health')",
-        ]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -118,29 +109,31 @@ services:
 
   hotel-search-wrapper:
     build:
-      context: ./apps/hotel-management
+      context: ./apps/hotel-search-wrapper
       dockerfile: Dockerfile
     ports:
       - '5007:5000'
     env_file:
       - .env
     environment:
+      - SERPAPI_KEY=${HOTELS_SERPAPI_KEY}
       - SUPABASE_URL=${HOTELS_SUPABASE_URL}
       - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+      - FLASK_PORT=5000
     command:
       [
         'python',
         '-m',
         'flask',
         '--app',
-        'hotel_management.hotel_search_wrapper_app',
+        'hotel_search_wrapper_app',
         'run',
         '--host=0.0.0.0',
       ]
 
   saved-hotels:
     build:
-      context: ./apps/hotel-management
+      context: ./apps/saved-hotels
       dockerfile: Dockerfile
     ports:
       - '5008:5000'
@@ -149,13 +142,14 @@ services:
     environment:
       - SUPABASE_URL=${HOTELS_SUPABASE_URL}
       - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+      - FLASK_PORT=5000
     command:
       [
         'python',
         '-m',
         'flask',
         '--app',
-        'hotel_management.saved_hotels_app',
+        'saved_hotels_app',
         'run',
         '--host=0.0.0.0',
       ]
@@ -171,15 +165,12 @@ services:
     environment:
       - SUPABASE_URL=${HOTELS_SUPABASE_URL}
       - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
+      - FLASK_PORT=5000
     command:
       [
         'python',
-        '-m',
-        'flask',
-        '--app',
-        'hotel_management.hotel_management_app',
-        'run',
-        '--host=0.0.0.0',
+        '-u',
+        'hotel_management/hotel_management_app.py',
       ]
 
   booked_tickets:
@@ -212,6 +203,62 @@ services:
       - booked_tickets
       - trips_atomic
 
+  book-hotels:
+    build:
+      context: ./apps/book-hotels
+      dockerfile: Dockerfile
+    ports:
+      - '5012:5000'
+    env_file:
+      - .env
+    environment:
+      - TRIPS_ATOMIC_URL=http://trips_atomic:5000
+      - HOTEL_MANAGEMENT_URL=http://hotel-management:5000
+      - BOOKED_TICKETS_URL=http://booked_tickets:5000
+      - AMQP_URL=${BOOK_HOTELS_AMQP_URL}
+      - AMQP_EXCHANGE=${BOOK_HOTELS_AMQP_EXCHANGE}
+      - AMQP_ROUTING_KEY_ACTIVITY=${BOOK_HOTELS_AMQP_ROUTING_KEY_ACTIVITY}
+      - AMQP_ROUTING_KEY_ERROR=${BOOK_HOTELS_AMQP_ROUTING_KEY_ERROR}
+    command:
+      [
+        'python',
+        '-m',
+        'flask',
+        '--app',
+        'book_hotels.book_hotels_app',
+        'run',
+        '--host=0.0.0.0',
+      ]
+
+  book-flight:
+    build:
+      context: ./apps/book-flight
+      dockerfile: Dockerfile
+    container_name: book-flight
+    ports:
+      - '5014:5000'
+    env_file:
+      - .env
+    environment:
+      - TRIPS_HOST=trips_atomic
+      - TRIPS_PORT=5000
+      - FLIGHTS_HOST=flight-management
+      - FLIGHTS_PORT=5000
+      - BOOKED_TICKETS_HOST=booked_tickets
+      - BOOKED_TICKETS_PORT=5000
+      - FLASK_PORT=5000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - trips_atomic
+      - flight-management
+      - booked_tickets
+
   collaboration_service:
     build:
       context: ./apps/collaboration_service
@@ -227,3 +274,41 @@ services:
       - PORT=5000
     depends_on:
       - redis
+
+  plan:
+    build:
+      context: ./apps/plan_service
+      dockerfile: Dockerfile
+    container_name: plan
+    ports:
+      - '5011:5000'
+    env_file:
+      - .env
+    environment:
+      - FLIGHT_MANAGEMENT_HOST=flight-management
+      - FLIGHT_MANAGEMENT_PORT=5000
+      - HOTEL_MANAGEMENT_HOST=hotel-management
+      - HOTEL_MANAGEMENT_PORT=5000
+      - TRIPS_ATOMIC_HOST=trips_atomic
+      - TRIPS_ATOMIC_PORT=5000
+      - FLASK_PORT=5000
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import requests; requests.get('http://localhost:5000/api/health')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      redis:
+        condition: service_started
+      flight-management:
+          condition: service_healthy
+
+

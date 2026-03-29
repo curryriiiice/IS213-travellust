@@ -15,4 +15,4 @@ ENV FLASK_DEBUG=1
 
 EXPOSE 5000
 
-CMD ["uv", "run", "python", "-m", "flask", "--app", "collaboration_service.app", "run", "--host=0.0.0.0"]
+CMD ["uv", "run", "python", "-m", "collaboration_service.app"]

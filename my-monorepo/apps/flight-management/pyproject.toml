@@ -1,28 +1,12 @@
 [project]
 name = "flight-management"
 version = "0.1.0"
-description = "Composite microservice for managing flight search, booking, and saving"
+description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
-    "flask>=3.0.0",
-    "requests>=2.31.0",
-    "python-dotenv>=1.0.0",
-    "gunicorn>=21.2.0",
+    "flask==3.0.0",
+    "gunicorn==21.2.0",
+    "python-dotenv==1.0.0",
+    "requests==2.31.0",
 ]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "flake8>=7.0.0",
-]
-
-[project.scripts]
-flight-management = "src.app:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.uv]
-dev-dependencies = []
