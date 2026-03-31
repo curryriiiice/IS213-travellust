@@ -23,7 +23,13 @@ class SupabaseAttractionRepository:
         return get_supabase_client().table(self.catalog_table_name)
 
     def list_attractions(self) -> list[dict]:
-        response = self._table().select("*").order("created_at", desc=False).execute()
+        response = (
+            self._table()
+            .select("*")
+            .eq("deleted", False)
+            .order("created_at", desc=False)
+            .execute()
+        )
         return response.data or []
 
     def list_attractions_by_trip(self, trip_id: str) -> list[dict]:
@@ -31,6 +37,7 @@ class SupabaseAttractionRepository:
             self._table()
             .select("*")
             .eq("trip_id", trip_id)
+            .eq("deleted", False)
             .order("created_at", desc=False)
             .execute()
         )
@@ -61,13 +68,14 @@ class SupabaseAttractionRepository:
             self._table()
             .select("*")
             .eq(self.id_column, attraction_id)
+            .eq("deleted", False)
             .limit(1)
             .execute()
         )
         return response.data[0] if response.data else None
 
     def create_attraction(self, payload: dict) -> dict:
-        response = self._table().insert(payload).execute()
+        response = self._table().insert({"deleted": False, **payload}).execute()
         return response.data[0]
 
     def create_attraction_from_catalog(
@@ -84,6 +92,7 @@ class SupabaseAttractionRepository:
             "gmaps_link": catalog_attraction.get("gmaps_link"),
             "cost": catalog_attraction.get("cost"),
             "catalog_attraction_id": catalog_attraction_id,
+            "deleted": False,
         }
         if payload:
             trip_attraction_payload.update(payload)
@@ -91,15 +100,26 @@ class SupabaseAttractionRepository:
         response = self._table().insert(trip_attraction_payload).execute()
         return response.data[0]
 
-    def update_attraction(self, attraction_id: str, payload: dict) -> dict | None:
+    def update_attraction(
+        self, trip_id: str, attraction_id: str, payload: dict
+    ) -> dict | None:
         response = (
             self._table()
             .update(payload)
+            .eq("trip_id", trip_id)
             .eq(self.id_column, attraction_id)
+            .eq("deleted", False)
             .execute()
         )
         return response.data[0] if response.data else None
 
-    def delete_attraction(self, attraction_id: str) -> dict | None:
-        response = self._table().delete().eq(self.id_column, attraction_id).execute()
+    def soft_delete_attraction(self, trip_id: str, attraction_id: str) -> dict | None:
+        response = (
+            self._table()
+            .update({"deleted": True})
+            .eq("trip_id", trip_id)
+            .eq(self.id_column, attraction_id)
+            .eq("deleted", False)
+            .execute()
+        )
         return response.data[0] if response.data else None
