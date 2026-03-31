@@ -17,10 +17,10 @@ class BookedTicketsClient:
         """
         try:
             response = requests.post(
-                f"{self.base_url}/api/bookings",
+                f"{self.base_url}/api/booked_tickets",
                 json={
                     "paid_by": paid_by,
-                    "fha_id": fha_id,
+                    "f_h_a_id": fha_id,
                     "user_id": user_id,
                     "cost": cost
                 },
@@ -28,7 +28,7 @@ class BookedTicketsClient:
             )
             response.raise_for_status()
             result = response.json()
-            return result.get('success', False)
+            return 'data' in result
         except requests.Timeout:
             raise ExternalServiceError("Request to booked_tickets timed out")
         except requests.RequestException as e:
