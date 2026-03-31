@@ -36,7 +36,7 @@ class BookingService:
         trip_data = self.trips_client.get_trip(trip_id)
 
         # Step 1a: Validate user_id is in trip members
-        member_ids = trip_data.get('memberids', [])
+        member_ids = trip_data.get('member_ids', [])
         if user_id not in member_ids:
             raise BookingError("A user is not part of this trip")
 
