@@ -19,6 +19,8 @@ def create_flight():
     """
     try:
         data = request.get_json()
+        print(f"📥 Received flight data in saved-flights route: {data}")
+        print(f"🔍 Origin in request: {data.get('origin')}, Destination in request: {data.get('destination')}")
         logger.info(f"Creating flight: {data['flight_number']} for trip {data['trip_id']}")
         validate_flight_data(data)
 
@@ -185,6 +187,14 @@ def update_flight():
             update_data['datetime_arrival'] = flight_details['datetime_arrival']
         if 'external_link' in flight_details:
             update_data['external_link'] = flight_details['external_link']
+
+        # Add new flight details fields
+        if 'aircraft_type' in flight_details:
+            update_data['aircraft_type'] = flight_details['aircraft_type']
+        if 'legroom' in flight_details:
+            update_data['legroom'] = flight_details['legroom']
+        if 'co2_kg' in flight_details:
+            update_data['co2_kg'] = flight_details['co2_kg']
 
         # Add trip_id and cost if provided
         if 'trip_id' in data:

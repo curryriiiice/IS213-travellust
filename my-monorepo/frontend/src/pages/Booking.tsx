@@ -88,7 +88,7 @@ const Booking = () => {
     state.itemType === "flight"
       ? state.data.price
       : state.itemType === "hotel"
-      ? state.data.pricePerNight
+      ? state.data.price
       : state.itemType === "attraction"
       ? state.data.price
       : state.data.cost;

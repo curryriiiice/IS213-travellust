@@ -186,15 +186,14 @@ const Landing = () => {
 
 // ── Landing inline forms ────────────────────────
 function LandingFlightForm({ navigate }: { navigate: NavigateFunction }) {
-  const [origin, setOrigin] = useState("SFO");
-  const [destination, setDestination] = useState("NRT");
-  const [date, setDate] = useState("2026-04-12");
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [date, setDate] = useState("2026-05-01");
   const [passengers, setPassengers] = useState(1);
-  const [cabin, setCabin] = useState("all");
   const airportCodes = Object.keys(airports);
 
   const handleSearch = () => {
-    const params = new URLSearchParams({ type: "flights", origin, destination, date, passengers: String(passengers), cabin });
+    const params = new URLSearchParams({ type: "flights", origin, destination, date, passengers: String(passengers) });
     navigate(`/search?${params.toString()}`);
   };
 
@@ -204,38 +203,23 @@ function LandingFlightForm({ navigate }: { navigate: NavigateFunction }) {
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Origin</label>
           <select value={origin} onChange={(e) => setOrigin(e.target.value)} className="form-select-style">
-            {airportCodes.map((c) => <option key={c} value={c}>{c} — {airports[c]}</option>)}
+            <option value="" disabled>Enter origin</option>
+            {airportCodes.map((c) => <option key={c} value={c}>{c} — {airports[c].name}</option>)}
           </select>
         </div>
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Destination</label>
           <select value={destination} onChange={(e) => setDestination(e.target.value)} className="form-select-style">
-            {airportCodes.map((c) => <option key={c} value={c}>{c} — {airports[c]}</option>)}
+            <option value="" disabled>Enter destination</option>
+            {airportCodes.map((c) => <option key={c} value={c}>{c} — {airports[c].name}</option>)}
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Date</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="form-select-style" />
-        </div>
-        <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Pax</label>
-          <select value={passengers} onChange={(e) => setPassengers(Number(e.target.value))} className="form-select-style">
-            {[1,2,3,4,5,6].map((n) => <option key={n} value={n}>{n} {n === 1 ? "adult" : "adults"}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Cabin</label>
-          <select value={cabin} onChange={(e) => setCabin(e.target.value)} className="form-select-style">
-            <option value="all">All</option>
-            <option value="economy">Economy</option>
-            <option value="business">Business</option>
-            <option value="first">First</option>
-          </select>
-        </div>
+      <div>
+        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Date</label>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="form-select-style" />
       </div>
-      <Button variant="accent" size="sm" className="w-full" onClick={handleSearch}>
+      <Button variant="accent" size="sm" className="w-full" onClick={handleSearch} disabled={!origin || !destination}>
         <Search className="w-3.5 h-3.5" /> Search Flights
       </Button>
     </div>
@@ -243,15 +227,13 @@ function LandingFlightForm({ navigate }: { navigate: NavigateFunction }) {
 }
 
 function LandingHotelForm({ navigate }: { navigate: NavigateFunction }) {
-  const [destination, setDestination] = useState("tokyo");
+  const [destination, setDestination] = useState("");
   const [checkIn, setCheckIn] = useState("2026-04-12");
   const [checkOut, setCheckOut] = useState("2026-04-15");
   const [guests, setGuests] = useState(2);
-  const [rooms, setRooms] = useState(1);
-  const cityCodes = Object.keys(hotelCities);
 
   const handleSearch = () => {
-    const params = new URLSearchParams({ type: "hotels", destination, checkIn, checkOut, guests: String(guests), rooms: String(rooms) });
+    const params = new URLSearchParams({ type: "hotels", destination, checkIn, checkOut, guests: String(guests) });
     navigate(`/search?${params.toString()}`);
   };
 
@@ -259,9 +241,13 @@ function LandingHotelForm({ navigate }: { navigate: NavigateFunction }) {
     <div className="space-y-3">
       <div>
         <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Destination</label>
-        <select value={destination} onChange={(e) => setDestination(e.target.value)} className="form-select-style">
-          {cityCodes.map((c) => <option key={c} value={c}>{hotelCities[c]}</option>)}
-        </select>
+        <input
+          type="text"
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+          placeholder="Search city..."
+          className="form-select-style placeholder:text-muted-foreground"
+        />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
@@ -273,19 +259,11 @@ function LandingHotelForm({ navigate }: { navigate: NavigateFunction }) {
           <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="form-select-style" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Guests</label>
-          <select value={guests} onChange={(e) => setGuests(Number(e.target.value))} className="form-select-style">
-            {[1,2,3,4].map((n) => <option key={n} value={n}>{n} {n === 1 ? "guest" : "guests"}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Rooms</label>
-          <select value={rooms} onChange={(e) => setRooms(Number(e.target.value))} className="form-select-style">
-            {[1,2,3,4].map((n) => <option key={n} value={n}>{n} {n === 1 ? "room" : "rooms"}</option>)}
-          </select>
-        </div>
+      <div className="mb-2">
+        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Guests</label>
+        <select value={guests} onChange={(e) => setGuests(Number(e.target.value))} className="form-select-style">
+          {[1,2,3,4].map((n) => <option key={n} value={n}>{n} {n === 1 ? "guest" : "guests"}</option>)}
+        </select>
       </div>
       <Button variant="accent" size="sm" className="w-full" onClick={handleSearch}>
         <Search className="w-3.5 h-3.5" /> Search Hotels

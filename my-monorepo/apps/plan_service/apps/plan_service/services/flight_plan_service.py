@@ -24,6 +24,8 @@ class FlightPlanService:
         Raises:
             ExternalServiceError: If downstream service fails
         """
+        print(f"📥 Received data in FlightPlanService: {data}")
+        print(f"🔍 Origin: {data.get('origin')}, Destination: {data.get('destination')}")
         # Future: Add validation logic here if needed
         # For now, delegate directly to flight-management
         return self.flight_mgmt_client.save_flight(data)

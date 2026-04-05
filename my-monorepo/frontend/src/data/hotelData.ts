@@ -5,16 +5,18 @@ export interface HotelOffer {
   city: string;
   address: string;
   starRating: number;
-  guestRating: number;
-  reviewCount: number;
-  pricePerNight: number;
+  overall_rating: number;
+  reviews: number;
+  price: number;
   currency: string;
   roomType: string;
   amenities: string[];
-  imageTag: string; // descriptor for UI placeholder
+  thumbnail: string;
+  fallbackThumbnail?: string;
   freeCancellation: boolean;
   breakfastIncluded: boolean;
   distanceFromCenter: string;
+  locationRating?: number;
 }
 
 export interface HotelSearchParams {
@@ -22,7 +24,6 @@ export interface HotelSearchParams {
   checkIn: string;
   checkOut: string;
   guests: number;
-  rooms: number;
 }
 
 export const hotelCities: Record<string, string> = {
@@ -46,13 +47,13 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "3-7-1-2 Nishi Shinjuku, Shinjuku",
     starRating: 5,
-    guestRating: 9.4,
-    reviewCount: 2847,
-    pricePerNight: 485,
+    overall_rating: 9.4,
+    reviews: 2847,
+    price: 485,
     currency: "USD",
     roomType: "Deluxe King",
     amenities: ["Spa", "Pool", "Gym", "Restaurant", "Bar", "Concierge"],
-    imageTag: "luxury-tower",
+    thumbnail: "luxury-tower",
     freeCancellation: true,
     breakfastIncluded: false,
     distanceFromCenter: "0.8 km",
@@ -64,13 +65,13 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "1-5-6 Otemachi, Chiyoda",
     starRating: 5,
-    guestRating: 9.7,
-    reviewCount: 1203,
-    pricePerNight: 1120,
+    overall_rating: 9.7,
+    reviews: 1203,
+    price: 1120,
     currency: "USD",
     roomType: "Premier Room",
     amenities: ["Spa", "Pool", "Gym", "Restaurant", "Bar", "Onsen"],
-    imageTag: "zen-luxury",
+    thumbnail: "zen-luxury",
     freeCancellation: true,
     breakfastIncluded: true,
     distanceFromCenter: "0.2 km",
@@ -82,13 +83,13 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "1-19-1 Kabukicho, Shinjuku",
     starRating: 3,
-    guestRating: 8.1,
-    reviewCount: 5621,
-    pricePerNight: 112,
+    overall_rating: 8.1,
+    reviews: 5621,
+    price: 112,
     currency: "USD",
     roomType: "Standard Double",
     amenities: ["Restaurant", "WiFi", "Laundry"],
-    imageTag: "city-hotel",
+    thumbnail: "city-hotel",
     freeCancellation: false,
     breakfastIncluded: false,
     distanceFromCenter: "1.2 km",
@@ -100,13 +101,13 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "1-23-4 Toranomon, Minato",
     starRating: 5,
-    guestRating: 9.2,
-    reviewCount: 1876,
-    pricePerNight: 395,
+    overall_rating: 9.2,
+    reviews: 1876,
+    price: 395,
     currency: "USD",
     roomType: "Andaz Large King",
     amenities: ["Spa", "Pool", "Gym", "Restaurant", "Bar", "Rooftop"],
-    imageTag: "modern-luxury",
+    thumbnail: "modern-luxury",
     freeCancellation: true,
     breakfastIncluded: true,
     distanceFromCenter: "1.5 km",
@@ -118,13 +119,13 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "2-14-5 Kabukicho, Shinjuku",
     starRating: 3,
-    guestRating: 7.8,
-    reviewCount: 3412,
-    pricePerNight: 89,
+    overall_rating: 7.8,
+    reviews: 3412,
+    price: 89,
     currency: "USD",
     roomType: "Superior Double",
     amenities: ["WiFi", "Restaurant", "Terrace"],
-    imageTag: "boutique",
+    thumbnail: "boutique",
     freeCancellation: false,
     breakfastIncluded: false,
     distanceFromCenter: "1.0 km",
@@ -136,13 +137,13 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "1-8-1 Yurakucho, Chiyoda",
     starRating: 5,
-    guestRating: 9.5,
-    reviewCount: 2105,
-    pricePerNight: 620,
+    overall_rating: 9.5,
+    reviews: 2105,
+    price: 620,
     currency: "USD",
     roomType: "Deluxe Room",
     amenities: ["Spa", "Pool", "Gym", "Restaurant", "Bar", "Limo Service"],
-    imageTag: "grand-hotel",
+    thumbnail: "grand-hotel",
     freeCancellation: true,
     breakfastIncluded: true,
     distanceFromCenter: "0.3 km",
@@ -154,13 +155,13 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "3-3-5 Ginza, Chuo",
     starRating: 4,
-    guestRating: 8.6,
-    reviewCount: 1567,
-    pricePerNight: 198,
+    overall_rating: 8.6,
+    reviews: 1567,
+    price: 198,
     currency: "USD",
     roomType: "Type C Double",
     amenities: ["Restaurant", "WiFi", "MUJI Store"],
-    imageTag: "minimal-design",
+    thumbnail: "minimal-design",
     freeCancellation: true,
     breakfastIncluded: false,
     distanceFromCenter: "0.5 km",
@@ -172,15 +173,80 @@ export const mockHotelResults: HotelOffer[] = [
     city: "Tokyo",
     address: "2-19-1 Dogenzaka, Shibuya",
     starRating: 3,
-    guestRating: 8.4,
-    reviewCount: 4230,
-    pricePerNight: 135,
+    overall_rating: 8.4,
+    reviews: 4230,
+    price: 135,
     currency: "USD",
     roomType: "Queen Room",
     amenities: ["Onsen", "WiFi", "Laundry", "Free Ramen"],
-    imageTag: "business-hotel",
+    thumbnail: "business-hotel",
     freeCancellation: false,
     breakfastIncluded: true,
     distanceFromCenter: "2.1 km",
   },
 ];
+
+export async function searchHotels(
+  query: string,
+  checkInDate: string,
+  checkOutDate: string,
+  adults: number = 2
+): Promise<HotelOffer[]> {
+  const payload = {
+    query,
+    check_in_date: checkInDate,
+    check_out_date: checkOutDate,
+    adults,
+  };
+
+  const response = await fetch("/api/hotel-management/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to search hotels");
+  }
+
+  const data = await response.json();
+  const properties = data?.data?.search_results?.properties || [];
+
+  return properties.map((p: any) => {
+    let nearbyText = "";
+    if (p.nearby_places && p.nearby_places.length > 0) {
+      const place = p.nearby_places[0];
+      const transport = place.transportations?.[0];
+      if (transport) {
+        nearbyText = `${transport.duration} ${transport.type === 'Walking' ? 'walk' : transport.type.toLowerCase()} to ${place.name}`;
+      } else {
+        nearbyText = `Near ${place.name}`;
+      }
+    }
+
+    return {
+      id: p.property_token || Math.random().toString(),
+      name: p.name || "",
+      chain: "",
+      city: query,
+      // Provide a mocked address if unavailable or try to get it from gps coordinates
+      address: p.address || "",
+      // Base 5. If overall_rating is out of 10, maybe we divide by 2? SerpApi usually returns out of 5 for Google Hotels.
+      starRating: Math.round(p.overall_rating || 3),
+      overall_rating: Math.round((p.overall_rating || 0) * 10) / 10,
+      reviews: p.reviews || 0,
+      price: p.rate_per_night?.extracted_lowest || p.total_rate?.extracted_lowest || 0,
+      currency: "SGD", // The payload asks for SGD or it usually is SGD
+      roomType: "Standard Room",
+      amenities: p.amenities || [],
+      thumbnail: p.images?.[0]?.original_image || p.images?.[0]?.thumbnail || "",
+      fallbackThumbnail: p.images?.[0]?.thumbnail || "",
+      freeCancellation: p.amenities?.some((a: string) => a.toLowerCase().includes("cancellation")) || false,
+      breakfastIncluded: p.amenities?.some((a: string) => a.toLowerCase().includes("breakfast")) || false,
+      distanceFromCenter: nearbyText,
+      locationRating: Math.round((p.location_rating || 0) * 10) / 10,
+    };
+  }).filter((h: HotelOffer) => h.price > 0 && h.reviews > 0);
+}

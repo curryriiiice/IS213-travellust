@@ -141,6 +141,7 @@ class HotelManagementService:
                 "rate_per_night": hotel_data.get("rate_per_night"),
                 "lat": hotel_data.get("lat"),
                 "long": hotel_data.get("long"),
+                "address": hotel_data.get("address"),
                 "amenities": hotel_data.get("amenities"),
                 "photos": hotel_data.get("photos"),
                 "address": hotel_data.get("address"),
@@ -269,6 +270,9 @@ class HotelManagementService:
             external_link = hotel_data.get("link", "")
             link = hotel_data.get("property_token", "")
 
+            # Transform address
+            address = self._extract_address(hotel_data)
+
             # Transform rating
             overall_rating = self._extract_rating(hotel_data)
 
@@ -310,6 +314,8 @@ class HotelManagementService:
                 transformed_data["lat"] = lat
             if long is not None:
                 transformed_data["long"] = long
+            if address:
+                transformed_data["address"] = address
             if amenities:
                 transformed_data["amenities"] = amenities
             if photos:
@@ -673,6 +679,13 @@ class HotelManagementService:
                 except (ValueError, TypeError):
                     pass
         return None, None
+
+    def _extract_address(self, hotel_data: Dict[str, Any]) -> Optional[str]:
+        """Extract address from hotel data."""
+        address = hotel_data.get("address")
+        if address:
+            return str(address)
+        return None
 
     def _extract_amenities(self, hotel_data: Dict[str, Any]) -> Optional[List[str]]:
         """Extract amenities from hotel data."""

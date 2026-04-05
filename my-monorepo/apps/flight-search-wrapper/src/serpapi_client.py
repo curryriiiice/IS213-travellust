@@ -59,7 +59,7 @@ class SerpApiClient:
 
             if response.status_code == 200:
                 data = response.json()
-                return self._parse_flights(data)
+                return self._parse_flights(data, origin, destination)
             elif response.status_code == 400:
                 raise ExternalAPIError("Invalid search parameters or airport codes")
             elif response.status_code == 401:
@@ -76,7 +76,7 @@ class SerpApiClient:
         except requests.RequestException as e:
             raise ExternalAPIError(f"Error connecting to SerpApi: {str(e)}")
 
-    def _parse_flights(self, data: Dict) -> List[Dict]:
+    def _parse_flights(self, data: Dict, origin: str, destination: str) -> List[Dict]:
         """Parse SerpApi response into standardized format (single journey aggregation)"""
         flights = []
 
@@ -94,7 +94,7 @@ class SerpApiClient:
 
         for journey in all_flights:
             try:
-                flight_info = self._parse_journey(journey, google_flights_url)
+                flight_info = self._parse_journey(journey, google_flights_url, origin, destination)
                 if flight_info:
                     flights.append(flight_info)
             except (KeyError, TypeError) as e:
@@ -105,7 +105,7 @@ class SerpApiClient:
         flights.sort(key=lambda f: f.get('price_sgd', float('inf')))
         return flights
 
-    def _parse_journey(self, journey: Dict, google_flights_url: str) -> Optional[Dict]:
+    def _parse_journey(self, journey: Dict, google_flights_url: str, origin: str, destination: str) -> Optional[Dict]:
         """
         Parse a multi-leg journey into a single flight entry
 
@@ -115,6 +115,11 @@ class SerpApiClient:
         - datetime_departure: First leg's departure time
         - datetime_arrival: Last leg's arrival time
         - price: Journey price
+        - aircraft_type: First leg's aircraft type
+        - legroom: First leg's legroom
+        - co2_kg: Journey's carbon emissions in kg
+        - origin: Origin airport code
+        - destination: Destination airport code
         """
         flights_list = journey.get('flights', [])
         if not flights_list:
@@ -160,6 +165,18 @@ class SerpApiClient:
         else:
             external_link = google_flights_url
 
+        # Extract aircraft type from first leg
+        aircraft_type = first_flight.get('airplane', None)
+
+        # Extract legroom from first leg
+        legroom = first_flight.get('legroom', None)
+
+        # Extract CO2 in kg from journey-level carbon_emissions (convert grams to kg)
+        carbon_emissions = journey.get('carbon_emissions', {})
+        co2_kg = None
+        if carbon_emissions and 'this_flight' in carbon_emissions:
+            co2_kg = round(carbon_emissions['this_flight'] / 1000, 2)
+
         return {
             'flight_number': flight_number,
             'airline': airline,
@@ -168,5 +185,10 @@ class SerpApiClient:
             'price_usd': price_usd,
             'price_sgd': price_sgd,
             'currency': currency_used,
-            'external_link': external_link
+            'external_link': external_link,
+            'aircraft_type': aircraft_type,
+            'legroom': legroom,
+            'co2_kg': co2_kg,
+            'origin': origin,
+            'destination': destination
         }
