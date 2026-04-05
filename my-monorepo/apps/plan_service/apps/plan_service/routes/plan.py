@@ -45,6 +45,8 @@ def save_flight():
     """
     try:
         data = request.get_json()
+        print(f"📥 Received flight data in plan service: {data}")
+        print(f"🔍 Origin in flight_details: {data.get('flight_details', {}).get('origin')}, Destination: {data.get('flight_details', {}).get('destination')}")
 
         # Validate required top-level fields
         required_fields = ["trip_id", "user_id", "flight_details", "cost"]
@@ -96,6 +98,16 @@ def save_flight():
         # Add optional fields from flight_details if present
         if "external_link" in flight_details:
             flat_data["external_link"] = flight_details["external_link"]
+        if "origin" in flight_details:
+            flat_data["origin"] = flight_details["origin"]
+        if "destination" in flight_details:
+            flat_data["destination"] = flight_details["destination"]
+        if "aircraft_type" in flight_details:
+            flat_data["aircraft_type"] = flight_details["aircraft_type"]
+        if "legroom" in flight_details:
+            flat_data["legroom"] = flight_details["legroom"]
+        if "co2_kg" in flight_details:
+            flat_data["co2_kg"] = flight_details["co2_kg"]
 
         # Save flight via service
         service = FlightPlanService()

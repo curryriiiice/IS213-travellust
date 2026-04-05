@@ -37,6 +37,10 @@ export interface Trip {
   currency: string;
   collaborators: Collaborator[];
   nodes: ItineraryNode[];
+  flight_ids?: string[] | null;
+  hotel_ids?: string[] | null;
+  attraction_ids?: string[] | null;
+  member_ids?: string[] | null;
 }
 
 export const nodeIcons: Record<NodeType, typeof Plane> = {

@@ -5,6 +5,13 @@ from .supabase_client import supabase
 app = Flask(__name__)
 
 
+@app.route("/api/trips/user/<user_id>", methods=["GET"])
+def get_trips_by_user(user_id):
+    """GET all trips where user_id is in the member_ids array."""
+    response = supabase.table("trips").select("*").contains("member_ids", [user_id]).execute()
+    return jsonify({"data": response.data, "count": len(response.data)})
+
+
 @app.route("/api/<table>", methods=["GET"])
 def get_all(table):
     """GET all records from a table."""

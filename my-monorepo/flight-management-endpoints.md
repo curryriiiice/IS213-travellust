@@ -12,8 +12,7 @@ Search for available flights based on origin, destination, and travel dates
 {
     "origin": "SIN",
     "destination": "HKG",
-    "datetime_departure": "2026-04-01T10:00:00Z",
-    "datetime_arrival": "2026-04-08T10:00:00Z"
+    "datetime_departure": "2026-04-01T10:00:00Z"
 }
 ```
 
@@ -30,7 +29,10 @@ Search for available flights based on origin, destination, and travel dates
             "external_link": "https://www.google.com/travel/flights?q=Flights%20from%20SIN%20to%20NRT%20on%202026-04-01%20through%202026-04-08",
             "flight_number": "1796",
             "price_sgd": 778.34,
-            "price_usd": 580.85
+            "price_usd": 580.85,
+            "aircraft_type": "Airbus A330",
+            "legroom": "32 in",
+            "co2_kg": 181.0
         }
     ],
     "success": true
@@ -55,7 +57,10 @@ Save a selected flight to a specific trip
         "external_link": "https://www.google.com/travel/flights?q=Flights%20from%20SIN%20to%20NRT%20on%202026-04-01%20through%202026-04-08",
         "flight_number": "1796",
         "price_sgd": 778.34,
-        "price_usd": 580.85
+        "price_usd": 580.85,
+        "aircraft_type": "Airbus A330",
+        "legroom": "32 in",
+        "co2_kg": 181.0
     },
     "trip_id": "550e8400-e29b-41d4-a716-446655440000",
     "cost": 778.34
@@ -94,6 +99,9 @@ Retrieve details of a saved flight by its ID.
         "external_link": "https://...",
         "trip_id": "trip-123",
         "cost": 778.34,
+        "aircraft_type": "Airbus A330",
+        "legroom": "32 in",
+        "co2_kg": 181.0,
         "created_at": "2026-03-22T10:00:00Z"
     }
 }
@@ -116,7 +124,10 @@ Note that once you delete a flight, you cannot update it anymore. Lmk if y'all w
         "datetime_arrival": "2026-04-08T23:25:00",
         "datetime_departure": "2026-04-01T17:55:00",
         "external_link": "https://www.google.com/travel/flights?q=Flights%20from%20SIN%20to%20NRT",
-        "flight_number": "1796"
+        "flight_number": "1796",
+        "aircraft_type": "Airbus A330",
+        "legroom": "32 in",
+        "co2_kg": 181.0
     },
     "trip_id": "550e8400-e29b-41d4-a716-446655440000",
     "cost": 778.34,
@@ -137,6 +148,9 @@ Note that once you delete a flight, you cannot update it anymore. Lmk if y'all w
         "external_link": "https://...",
         "trip_id": "trip-123",
         "cost": 778.34,
+        "aircraft_type": "Airbus A330",
+        "legroom": "32 in",
+        "co2_kg": 181.0,
         "created_at": "2026-03-22T10:00:00Z"
     }
 }
