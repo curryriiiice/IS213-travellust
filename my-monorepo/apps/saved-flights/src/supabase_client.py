@@ -41,12 +41,21 @@ class SupabaseFlightClient:
             'external_link': flight_data.get('external_link'),
             'trip_id': str(flight_data.get('trip_id')) if flight_data.get('trip_id') else None,
             'cost': float(flight_data.get('cost')) if flight_data.get('cost') is not None else None,
+            'aircraft_type': flight_data.get('aircraft_type'),
+            'legroom': flight_data.get('legroom'),
+            'co2_kg': flight_data.get('co2_kg'),
+            'origin': flight_data.get('origin'),
+            'destination': flight_data.get('destination'),
             'created_at': safe_isoformat(flight_data.get('created_at'))
         }
 
     def create_flight(self, data: Dict[str, Any]) -> str:
         """Create a new flight and return its UUID"""
         try:
+            # Log incoming data for debugging
+            print(f"📥 Incoming flight data: {data}")
+            print(f"🔍 Origin: {data.get('origin')}, Destination: {data.get('destination')}")
+
             # Prepare data for Supabase
             # Convert parsed datetime objects to ISO strings for JSON serialization
             dt_dep = data.get('datetime_departure_parsed') or data['datetime_departure']
@@ -59,8 +68,15 @@ class SupabaseFlightClient:
                 'datetime_arrival': dt_arr.isoformat() if hasattr(dt_arr, 'isoformat') else dt_arr,
                 'external_link': data.get('external_link'),
                 'trip_id': data.get('trip_id'),
-                'cost': data['cost']
+                'cost': data['cost'],
+                'aircraft_type': data.get('aircraft_type'),
+                'legroom': data.get('legroom'),
+                'co2_kg': data.get('co2_kg'),
+                'origin': data.get('origin'),
+                'destination': data.get('destination')
             }
+
+            print(f"📤 Flight data to insert: {flight_data}")
 
             # Insert into Supabase
             result = self.client.table('flights').insert(flight_data).execute()
@@ -130,6 +146,16 @@ class SupabaseFlightClient:
                 update_data['trip_id'] = data['trip_id']
             if 'cost' in data:
                 update_data['cost'] = data['cost']
+            if 'aircraft_type' in data:
+                update_data['aircraft_type'] = data['aircraft_type']
+            if 'legroom' in data:
+                update_data['legroom'] = data['legroom']
+            if 'co2_kg' in data:
+                update_data['co2_kg'] = data['co2_kg']
+            if 'origin' in data:
+                update_data['origin'] = data['origin']
+            if 'destination' in data:
+                update_data['destination'] = data['destination']
 
             # Update in Supabase
             result = self.client.table('flights').update(update_data).eq('flight_id', flight_id).execute()
@@ -160,7 +186,7 @@ class SupabaseFlightClient:
                 raise Exception("flight has already been deleted")
 
             # Check if at least one field is provided for update
-            updateable_fields = {'flight_number', 'airline', 'datetime_departure', 'datetime_arrival', 'external_link', 'trip_id', 'cost'}
+            updateable_fields = {'flight_number', 'airline', 'datetime_departure', 'datetime_arrival', 'external_link', 'trip_id', 'cost', 'aircraft_type', 'legroom', 'co2_kg', 'origin', 'destination'}
             fields_to_update = set(data.keys()) & updateable_fields
 
             if len(fields_to_update) == 0:
@@ -184,6 +210,16 @@ class SupabaseFlightClient:
                 update_data['trip_id'] = data['trip_id']
             if 'cost' in data:
                 update_data['cost'] = data['cost']
+            if 'aircraft_type' in data:
+                update_data['aircraft_type'] = data['aircraft_type']
+            if 'legroom' in data:
+                update_data['legroom'] = data['legroom']
+            if 'co2_kg' in data:
+                update_data['co2_kg'] = data['co2_kg']
+            if 'origin' in data:
+                update_data['origin'] = data['origin']
+            if 'destination' in data:
+                update_data['destination'] = data['destination']
 
             # Update in Supabase
             result = self.client.table('flights').update(update_data).eq('flight_id', flight_id).execute()

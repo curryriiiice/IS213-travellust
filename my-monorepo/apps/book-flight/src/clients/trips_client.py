@@ -22,10 +22,12 @@ class TripsClient:
             )
             response.raise_for_status()
             result = response.json()
-            if result.get('success'):
+            if 'data' in result:
                 return result['data']
-            else:
+            elif 'error' in result:
                 raise ExternalServiceError(f"Trips error: {result.get('error', 'Unknown error')}")
+            else:
+                raise ExternalServiceError("Trips error: Unknown error")
         except requests.Timeout:
             raise ExternalServiceError("Request to trips_atomic timed out")
         except requests.RequestException as e:

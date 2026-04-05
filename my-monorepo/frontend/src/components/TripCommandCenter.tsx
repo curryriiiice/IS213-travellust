@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
@@ -6,7 +6,7 @@ import { LedgerPane } from "./LedgerPane";
 import { BudgetBar } from "./BudgetBar";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
 import type { Trip, ItineraryNode } from "@/types/trip";
-import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin } from "lucide-react";
+import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +15,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
+import { fetchFlightById } from "@/api/flight";
+import { fetchHotelById } from "@/api/hotel";
+import { fetchAttractionsByTripId } from "@/api/attraction";
+import { getUserBookedTickets } from "@/api/booking";
 
 interface TripCommandCenterProps {
   trip: Trip;
@@ -26,6 +30,8 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
   const navigate = useNavigate();
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
+  const [enrichedNodes, setEnrichedNodes] = useState<ItineraryNode[]>([]);
+  const [isEnriching, setIsEnriching] = useState(false);
 
   // Add node form state
   const [nodeType, setNodeType] = useState<"flight" | "hotel" | "attraction">("flight");
@@ -45,6 +51,93 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
     setNodeDuration("");
     setNodeType("flight");
   };
+
+  // Enrich trip details from microservices when trip changes
+  useEffect(() => {
+    const enrichTripDetails = async () => {
+      if (!trip.id) return;
+
+      console.log("Enriching trip:", trip.id);
+      console.log("Trip IDs - flights:", trip.flight_ids, "hotels:", trip.hotel_ids, "attractions:", trip.attraction_ids);
+
+      setIsEnriching(true);
+      const fetchedNodes: ItineraryNode[] = [];
+
+      // Get the IDs for each item type from the trip
+      const flightIds = trip.flight_ids || [];
+      const hotelIds = trip.hotel_ids || [];
+      const attractionIds = trip.attraction_ids || [];
+
+      // If we have manual nodes, start with those
+      if (trip.nodes && trip.nodes.length > 0) {
+        fetchedNodes.push(...trip.nodes);
+      }
+
+      // Fetch all flight details in parallel
+      if (flightIds.length > 0) {
+        const flightPromises = flightIds.map((id: string) =>
+          fetchFlightById(id, trip.currency)
+        );
+        const flightResults = await Promise.allSettled(flightPromises);
+        flightResults.forEach((result) => {
+          if (result.status === "fulfilled" && result.value) {
+            fetchedNodes.push(result.value);
+          } else if (result.status === "rejected") {
+            console.error("Flight fetch failed:", result.reason);
+          }
+        });
+      }
+
+      // Fetch all hotel details in parallel
+      if (hotelIds.length > 0) {
+        const hotelPromises = hotelIds.map((id: string) =>
+          fetchHotelById(id, trip.currency)
+        );
+        const hotelResults = await Promise.allSettled(hotelPromises);
+        hotelResults.forEach((result) => {
+          if (result.status === "fulfilled" && result.value) {
+            fetchedNodes.push(result.value);
+          } else if (result.status === "rejected") {
+            console.error("Hotel fetch failed:", result.reason);
+          }
+        });
+      }
+
+      // Fetch all attractions for the trip in one call
+      if (attractionIds.length > 0) {
+        const attractions = await fetchAttractionsByTripId(trip.id, trip.currency);
+        console.log("Fetched attractions:", attractions.length);
+        fetchedNodes.push(...attractions);
+      }
+
+      // Fetch user's real bookings and mark nodes confirmed where a matching ticket exists
+      const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+      const userTickets = await getUserBookedTickets(CURRENT_USER_ID);
+      const bookedIds = new Set(userTickets.map((t) => t.f_h_a_id));
+
+      const resolvedNodes = fetchedNodes.map((node) =>
+        bookedIds.has(node.id) ? { ...node, status: "confirmed" as const } : node
+      );
+
+      // Sort all items by date, then by time
+      resolvedNodes.sort((a, b) => {
+        const dateCompare = a.date.localeCompare(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.time.localeCompare(b.time);
+      });
+
+      console.log("Total enriched nodes:", resolvedNodes.length, "| Booked IDs:", bookedIds.size);
+      setEnrichedNodes(resolvedNodes);
+      setIsEnriching(false);
+    };
+
+    enrichTripDetails();
+  }, [trip.id, trip.currency, trip.nodes, trip.flight_ids, trip.hotel_ids, trip.attraction_ids]);
+
+  // Use enriched nodes (always use after enrichment completes)
+  // During enrichment, show original trip nodes as placeholder
+  const nodesToDisplay = isEnriching ? trip.nodes : enrichedNodes;
+  console.log("Displaying nodes:", nodesToDisplay.length, "isEnriching:", isEnriching);
 
   const handleAddNode = () => {
     if (!nodeTitle || !nodeDate) return;
@@ -73,7 +166,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
   };
 
   // Group nodes by date
-  const nodesByDate = trip.nodes.reduce(
+  const nodesByDate = nodesToDisplay.reduce(
     (acc, node) => {
       if (!acc[node.date]) acc[node.date] = [];
       acc[node.date].push(node);
@@ -129,7 +222,10 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
         <div className="w-80 shrink-0 pane-border flex flex-col bg-card">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-              Itinerary · {trip.nodes.length} nodes
+              Itinerary · {nodesToDisplay.length} nodes
+              {isEnriching && (
+                <Loader2 className="w-3 h-3 ml-1 animate-spin inline" />
+              )}
             </span>
             <Button
               variant="ghost"
@@ -175,7 +271,14 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                     isSelected={selectedNode?.id === node.id}
                     onClick={(n) => {
                       setSelectedNode(n);
-                      navigate("/details", { state: { itemType: "node", data: n } });
+                      navigate("/details", {
+                        state: {
+                          itemType: "node",
+                          data: n,
+                          tripId: trip.id,
+                          memberIds: trip.member_ids ?? [],
+                        },
+                      });
                     }}
                     isFirst={false}
                   />
@@ -183,7 +286,11 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
               </div>
             ))}
           </div>
-          <BudgetBar budget={trip.budget} spent={trip.spent} currency={trip.currency} />
+          {/* Calculate total spent from enriched nodes */}
+          {(() => {
+            const totalSpent = nodesToDisplay.reduce((sum, node) => sum + (node.cost || 0), 0);
+            return <BudgetBar budget={trip.budget} spent={totalSpent} currency={trip.currency} />;
+          })()}
         </div>
 
         {/* Center: Detail view */}

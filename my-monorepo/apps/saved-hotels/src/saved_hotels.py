@@ -40,8 +40,10 @@ class SavedHotelsService:
         rate_per_night: Optional[float] = None,
         lat: Optional[float] = None,
         long: Optional[float] = None,
+        address: Optional[str] = None,
         amenities: Optional[List[str]] = None,
         photos: Optional[List[str]] = None,
+        address: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a new saved hotel entry.
@@ -58,8 +60,10 @@ class SavedHotelsService:
             rate_per_night: Rate per night
             lat: Latitude
             long: Longitude
+            address: Hotel address
             amenities: List of amenities
             photos: List of photo URLs (max 3)
+            address: Hotel address
 
         Returns:
             Dictionary containing the created hotel data
@@ -85,11 +89,15 @@ class SavedHotelsService:
             hotel_data["lat"] = lat
         if long is not None:
             hotel_data["long"] = long
+        if address:
+            hotel_data["address"] = address
         if amenities:
             hotel_data["amenities"] = amenities
         if photos:
             # Limit to max 3 photos
             hotel_data["photos"] = photos[:3] if len(photos) > 3 else photos
+        if address:
+            hotel_data["address"] = address
 
         try:
             result = supabase.table(self.table_name).insert(hotel_data).execute()
@@ -155,8 +163,10 @@ class SavedHotelsService:
         rate_per_night: Optional[float] = None,
         lat: Optional[float] = None,
         long: Optional[float] = None,
+        address: Optional[str] = None,
         amenities: Optional[List[str]] = None,
         photos: Optional[List[str]] = None,
+        address: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Update a saved hotel.
@@ -173,8 +183,10 @@ class SavedHotelsService:
             rate_per_night: Updated rate per night
             lat: Updated latitude
             long: Updated longitude
+            address: Updated address
             amenities: Updated list of amenities
             photos: Updated list of photos (max 3)
+            address: Updated hotel address
 
         Returns:
             Dictionary containing the updated hotel data, or None if not found
@@ -201,11 +213,15 @@ class SavedHotelsService:
             update_data["lat"] = lat
         if long is not None:
             update_data["long"] = long
+        if address is not None:
+            update_data["address"] = address
         if amenities is not None:
             update_data["amenities"] = amenities
         if photos is not None:
             # Limit to max 3 photos
             update_data["photos"] = photos[:3] if len(photos) > 3 else photos
+        if address is not None:
+            update_data["address"] = address
 
         if not update_data:
             raise ValueError("No fields to update")

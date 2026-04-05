@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Numeric
+from sqlalchemy import Column, String, DateTime, Numeric, Float
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.sql import func
 from .database import Base, USE_SQLITE, UUIDString
@@ -23,6 +23,9 @@ class Flight(Base):
     external_link = Column(String(500))
     trip_id = Column(UUIDType)  # UUID reference to trip from another service
     cost = Column(Numeric(10, 2))  # Changed from Float to Numeric for precision
+    aircraft_type = Column(String(100), nullable=True)
+    legroom = Column(String(20), nullable=True)
+    co2_kg = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def to_dict(self) -> dict:
@@ -36,5 +39,8 @@ class Flight(Base):
             'external_link': self.external_link,
             'trip_id': str(self.trip_id) if self.trip_id else None,
             'cost': float(self.cost) if self.cost is not None else None,  # Convert Decimal to float for JSON
+            'aircraft_type': self.aircraft_type,
+            'legroom': self.legroom,
+            'co2_kg': self.co2_kg,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

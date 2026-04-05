@@ -12,6 +12,11 @@ class Flight:
     price_sgd: float
     currency: str
     external_link: str = ""
+    aircraft_type: Optional[str] = None
+    legroom: Optional[str] = None
+    co2_kg: Optional[float] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON response"""
@@ -23,5 +28,10 @@ class Flight:
             'price_usd': self.price_usd,
             'price_sgd': self.price_sgd,
             'currency': self.currency,
-            'external_link': self.external_link
+            'external_link': self.external_link,
+            'aircraft_type': self.aircraft_type,
+            'legroom': self.legroom,
+            'co2_kg': self.co2_kg,
+            'origin': self.origin,
+            'destination': self.destination
         }

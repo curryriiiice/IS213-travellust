@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { TripCard } from "@/components/TripCard";
 import { TripCommandCenter } from "@/components/TripCommandCenter";
-import { mockTrips } from "@/data/mockData";
 import { mockCollaborators } from "@/data/mockData";
+import { getUserTrips } from "@/api/trip";
 import type { Trip, ItineraryNode, Collaborator } from "@/types/trip";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -26,13 +26,31 @@ import {
 
 const Index = () => {
   const navigate = useNavigate();
-  const [trips, setTrips] = useState<Trip[]>(mockTrips);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
   const [addNodeTripId, setAddNodeTripId] = useState<string | null>(null);
   const [collabOpen, setCollabOpen] = useState(false);
   const [collabTripId, setCollabTripId] = useState<string | null>(null);
   const [newTripOpen, setNewTripOpen] = useState(false);
+
+  const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+
+  useEffect(() => {
+    setIsLoading(true);
+    setFetchError(null);
+    getUserTrips(CURRENT_USER_ID)
+      .then((fetched) => {
+        setTrips(fetched);
+      })
+      .catch((err) => {
+        console.error("Failed to load trips:", err);
+        setFetchError("Could not load your trips. Please try again later.");
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
 
   // Add node form state
   const [nodeType, setNodeType] = useState<"flight" | "hotel" | "attraction">("flight");
@@ -75,6 +93,9 @@ const Index = () => {
       currency: tripCurrency,
       collaborators: tripCollaborators,
       nodes: [],
+      flight_ids: null,
+      hotel_ids: null,
+      attraction_ids: null,
     };
     setTrips((prev) => [...prev, newTrip]);
     toast({ title: "Trip created", description: `${tripName} — ${tripDestination}` });
@@ -207,46 +228,68 @@ const Index = () => {
           <div className="mb-6">
             <h1 className="text-xl font-medium tracking-tight">Your Trips</h1>
             <p className="text-xs text-muted-foreground mt-1 font-mono">
-              {trips.length} itineraries · {trips.reduce((s, t) => s + t.collaborators.length, 0)} collaborators active
+              {isLoading ? "Loading trips…" : `${trips.length} itineraries`}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {trips.map((trip) => (
-              <div key={trip.id} className="relative group">
-                <TripCard trip={trip} onClick={setSelectedTrip} />
-                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-6 w-6 bg-card/90 backdrop-blur-sm"
-                    onClick={(e) => { e.stopPropagation(); openAddNode(trip.id); }}
-                    title="Add node"
-                  >
-                    <Plus className="w-3 h-3" />
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="icon"
-                    className="h-6 w-6 bg-card/90 backdrop-blur-sm"
-                    onClick={(e) => { e.stopPropagation(); openCollabManager(trip.id); }}
-                    title="Manage collaborators"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+          {/* Error state */}
+          {fetchError && (
+            <div className="border border-destructive/30 bg-destructive/5 rounded-sm px-4 py-3 mb-4">
+              <p className="text-xs text-destructive font-mono">{fetchError}</p>
+            </div>
+          )}
 
-            <motion.div
-              whileHover={{ y: -2 }}
-              className="border border-dashed border-border rounded-sm p-4 flex flex-col items-center justify-center gap-2 cursor-pointer node-interactive min-h-[160px]"
-              onClick={() => setNewTripOpen(true)}
-            >
-              <Plus className="w-5 h-5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Create Trip</span>
-            </motion.div>
-          </div>
+          {/* Loading skeleton */}
+          {isLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="border border-border rounded-sm p-4 space-y-3 animate-pulse min-h-[160px]">
+                  <div className="h-3 bg-secondary rounded-sm w-2/3" />
+                  <div className="h-2 bg-secondary rounded-sm w-1/2" />
+                  <div className="h-2 bg-secondary rounded-sm w-3/4" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {trips.map((trip) => (
+                <div key={trip.id} className="relative group">
+                  <TripCard trip={trip} onClick={setSelectedTrip} />
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-6 w-6 bg-card/90 backdrop-blur-sm"
+                      onClick={(e) => { e.stopPropagation(); openAddNode(trip.id); }}
+                      title="Add node"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-6 w-6 bg-card/90 backdrop-blur-sm"
+                      onClick={(e) => { e.stopPropagation(); openCollabManager(trip.id); }}
+                      title="Manage collaborators"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              <motion.div
+                whileHover={{ y: -2 }}
+                className="border border-dashed border-border rounded-sm p-4 flex flex-col items-center justify-center gap-2 cursor-pointer node-interactive min-h-[160px]"
+                onClick={() => setNewTripOpen(true)}
+              >
+                <Plus className="w-5 h-5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Create Trip</span>
+              </motion.div>
+            </div>
+          )}
         </motion.div>
       </main>
 
