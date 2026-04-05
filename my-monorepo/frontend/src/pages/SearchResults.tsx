@@ -26,16 +26,34 @@ import {
 } from "lucide-react";
 import { searchFlights, airports, type FlightOffer } from "@/data/flightData";
 import { searchHotels, hotelCities, type HotelOffer } from "@/data/hotelData";
-import { mockAttractionResults, attractionCities, type AttractionOffer } from "@/data/attractionData";
+import type { AttractionOffer } from "@/data/attractionData";
 import { mockTrips } from "@/data/mockData";
 import { getUserTrips } from "@/api/trip";
+import {
+  fetchCatalogAttractions,
+  fetchCatalogAttractionLocations,
+  fetchCatalogAttractionsByLocation,
+} from "@/api/attraction";
 import type { Trip } from "@/types/trip";
 import { toast } from "@/hooks/use-toast";
 
 type SearchTab = "flights" | "hotels" | "attractions";
 type FlightSortKey = "price" | "duration" | "departure";
 type HotelSortKey = "price" | "rating" | "stars";
-type AttractionSortKey = "price" | "rating" | "duration";
+type AttractionSortKey = "price";
+
+const getInitialAttractionCity = (
+  initialTab: SearchTab,
+  destinationParam: string | null
+) => {
+  if (initialTab !== "attractions" || !destinationParam) {
+    return "";
+  }
+
+  return destinationParam;
+};
+
+const getAttractionLocationFilter = (location: string) => location.trim();
 
 const SearchResults = () => {
   const [searchParams] = useSearchParams();
@@ -68,11 +86,15 @@ const SearchResults = () => {
   const [hotels, setHotels] = useState<HotelOffer[]>([]);
 
   // Attraction state
-  const [aCity, setACity] = useState(searchParams.get("destination") || "tokyo");
+  const [aCity, setACity] = useState(
+    getInitialAttractionCity(initialTab, searchParams.get("destination"))
+  );
   const [aDate, setADate] = useState(searchParams.get("date") || "2026-04-12");
-  const [aSort, setASort] = useState<AttractionSortKey>("rating");
-  const [aSortAsc, setASortAsc] = useState(false);
+  const [aSort, setASort] = useState<AttractionSortKey>("price");
+  const [aSortAsc, setASortAsc] = useState(true);
   const [aMaxPrice, setAMaxPrice] = useState<number | null>(null);
+  const [attractions, setAttractions] = useState<AttractionOffer[]>([]);
+  const [attractionLocations, setAttractionLocations] = useState<string[]>([]);
 
   // Add-to-trip modal
   const [tripPickerItem, setTripPickerItem] = useState<{ type: "flight"; data: FlightOffer } | { type: "hotel"; data: HotelOffer } | { type: "attraction"; data: AttractionOffer } | null>(null);
@@ -103,9 +125,28 @@ const SearchResults = () => {
     }
   }, [tripPickerItem]);
 
+  useEffect(() => {
+    const loadAttractionLocations = async () => {
+      try {
+        const locations = await fetchCatalogAttractionLocations();
+        setAttractionLocations(locations);
+      } catch (err) {
+        console.error("Failed to load attraction locations:", err);
+        setAttractionLocations([]);
+      }
+    };
+
+    loadAttractionLocations();
+  }, []);
+
+  useEffect(() => {
+    if (aCity && attractionLocations.length > 0 && !attractionLocations.includes(aCity)) {
+      setACity("");
+    }
+  }, [aCity, attractionLocations]);
+
   const airportCodes = Object.keys(airports);
   const cityCodes = Object.keys(hotelCities);
-  const attractionCityCodes = Object.keys(attractionCities);
 
   // Flight results
   const flightResults = useMemo(() => {
@@ -144,19 +185,14 @@ const SearchResults = () => {
   // Attraction results
   const attractionResults = useMemo(() => {
     if (!hasSearched || activeTab !== "attractions") return [];
-    let results = [...mockAttractionResults];
+    let results = [...attractions];
     if (aMaxPrice !== null) results = results.filter((a) => a.price <= aMaxPrice);
     results.sort((a, b) => {
-      let cmp = 0;
-      switch (aSort) {
-        case "price": cmp = a.price - b.price; break;
-        case "rating": cmp = b.rating - a.rating; break;
-        case "duration": cmp = a.durationMinutes - b.durationMinutes; break;
-      }
+      const cmp = a.price - b.price;
       return aSortAsc ? cmp : -cmp;
     });
     return results;
-  }, [hasSearched, activeTab, aSort, aSortAsc, aMaxPrice]);
+  }, [hasSearched, activeTab, aSort, aSortAsc, aMaxPrice, attractions]);
 
   const flightMinPrice = flightResults.length > 0 ? Math.min(...flightResults.map((f) => f.price)) : 0;
   const hotelMinPrice = hotelResults.length > 0 ? Math.min(...hotelResults.map((h) => h.price)) : 0;
@@ -184,7 +220,11 @@ const SearchResults = () => {
         const results = await searchHotels(hDest, hCheckIn, hCheckOut, hGuests);
         setHotels(results);
       } else {
-        // Assume attractions tab relies on mock logic for now since it's unhandled by search API
+        const selectedLocation = getAttractionLocationFilter(aCity);
+        const results = selectedLocation
+          ? await fetchCatalogAttractionsByLocation(selectedLocation)
+          : await fetchCatalogAttractions();
+        setAttractions(results);
       }
       setHasSearched(true);
     } catch (err) {
@@ -192,6 +232,7 @@ const SearchResults = () => {
       setError(err instanceof Error ? err.message : "Failed to search");
       if (activeTab === "flights") setFlights([]);
       else if (activeTab === "hotels") setHotels([]);
+      else setAttractions([]);
       setHasSearched(true);
     } finally {
       setIsLoading(false);
@@ -199,7 +240,28 @@ const SearchResults = () => {
   };
 
   useEffect(() => {
-    handleSearch();
+    const loadInitialResults = async () => {
+      if (initialTab !== "attractions") {
+        await handleSearch();
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        const results = await fetchCatalogAttractions();
+        setAttractions(results);
+      } catch (err) {
+        console.error("Error loading attractions:", err);
+        setError(err instanceof Error ? err.message : "Failed to search");
+        setAttractions([]);
+      } finally {
+        setHasSearched(true);
+        setIsLoading(false);
+      }
+    };
+
+    loadInitialResults();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -357,7 +419,12 @@ const SearchResults = () => {
             <div className="space-y-3">
               <FormField label="City">
                 <select value={aCity} onChange={(e) => setACity(e.target.value)} className="form-select-style">
-                  {attractionCityCodes.map((c) => <option key={c} value={c}>{attractionCities[c]}</option>)}
+                  <option value="">All cities</option>
+                  {attractionLocations.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
                 </select>
               </FormField>
               <FormField label="Date">
@@ -431,8 +498,8 @@ const SearchResults = () => {
                         </button>
                       ))}
                     </div>
-                    {(["rating", "price", "duration"] as AttractionSortKey[]).map((key) => (
-                      <button key={key} onClick={() => { if (aSort === key) setASortAsc(!aSortAsc); else { setASort(key); setASortAsc(false); } }}
+                    {(["price"] as AttractionSortKey[]).map((key) => (
+                      <button key={key} onClick={() => { if (aSort === key) setASortAsc(!aSortAsc); else { setASort(key); setASortAsc(true); } }}
                         className={`text-[10px] font-mono px-2 py-0.5 rounded-sm transition-colors flex items-center gap-0.5 ${aSort === key ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary"}`}
                       >
                         {key}
@@ -892,8 +959,16 @@ function AttractionResultCard({
       className="bg-card border border-border rounded-sm overflow-hidden node-interactive"
     >
       <div className="px-4 py-3.5 flex gap-4">
-        <div className="w-24 h-24 bg-secondary rounded-sm shrink-0 flex items-center justify-center">
-          <MapPin className="w-8 h-8 text-muted-foreground/30" />
+        <div className="w-24 h-24 bg-secondary rounded-sm shrink-0 flex items-center justify-center overflow-hidden">
+          {attraction.imageUrl ? (
+            <img
+              src={attraction.imageUrl}
+              alt={attraction.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <MapPin className="w-8 h-8 text-muted-foreground/30" />
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -904,7 +979,7 @@ function AttractionResultCard({
                 <Badge variant="outline" className="text-[8px] px-1 py-0 border-node-attraction/30 text-node-attraction">
                   {attraction.category}
                 </Badge>
-                <span className="text-[10px] font-mono text-muted-foreground">{attraction.city}, {attraction.country}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{attraction.city}</span>
               </div>
             </div>
             <div className="text-right shrink-0">
@@ -922,15 +997,9 @@ function AttractionResultCard({
 
           <div className="flex items-center justify-between mt-2.5">
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[8px] px-1 py-0 border-node-hotel/30 text-node-hotel">
-                ★ {attraction.rating}
-              </Badge>
               <span className="text-[9px] text-muted-foreground font-mono">
-                {attraction.durationMinutes >= 60
-                  ? `${Math.floor(attraction.durationMinutes / 60)}h${attraction.durationMinutes % 60 > 0 ? ` ${attraction.durationMinutes % 60}m` : ""}`
-                  : `${attraction.durationMinutes}m`}
+                {attraction.bestTimeToVisit || attraction.openingHours}
               </span>
-              <span className="text-[9px] text-muted-foreground font-mono">{attraction.openingHours}</span>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="h-7 text-[10px]" onClick={onViewDetails}>

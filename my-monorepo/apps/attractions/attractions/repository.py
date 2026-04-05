@@ -53,6 +53,26 @@ class SupabaseAttractionRepository:
         response = query.order("name", desc=False).execute()
         return response.data or []
 
+    def list_catalog_attractions_by_location(self, location: str) -> list[dict]:
+        response = (
+            self._catalog_table()
+            .select("*")
+            .ilike("location", location)
+            .order("name", desc=False)
+            .execute()
+        )
+        return response.data or []
+
+    def list_catalog_locations(self) -> list[str]:
+        response = self._catalog_table().select("location").execute()
+        records = response.data or []
+        normalized_locations = {
+            str(record["location"]).strip()
+            for record in records
+            if record.get("location")
+        }
+        return sorted(normalized_locations, key=str.lower)
+
     def get_catalog_attraction(self, catalog_attraction_id: str) -> dict | None:
         response = (
             self._catalog_table()
