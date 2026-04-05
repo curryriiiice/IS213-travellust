@@ -42,6 +42,7 @@ class SavedHotelsService:
         long: Optional[float] = None,
         amenities: Optional[List[str]] = None,
         photos: Optional[List[str]] = None,
+        address: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a new saved hotel entry.
@@ -60,6 +61,7 @@ class SavedHotelsService:
             long: Longitude
             amenities: List of amenities
             photos: List of photo URLs (max 3)
+            address: Hotel address
 
         Returns:
             Dictionary containing the created hotel data
@@ -90,6 +92,8 @@ class SavedHotelsService:
         if photos:
             # Limit to max 3 photos
             hotel_data["photos"] = photos[:3] if len(photos) > 3 else photos
+        if address:
+            hotel_data["address"] = address
 
         try:
             result = supabase.table(self.table_name).insert(hotel_data).execute()
@@ -157,6 +161,7 @@ class SavedHotelsService:
         long: Optional[float] = None,
         amenities: Optional[List[str]] = None,
         photos: Optional[List[str]] = None,
+        address: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Update a saved hotel.
@@ -175,6 +180,7 @@ class SavedHotelsService:
             long: Updated longitude
             amenities: Updated list of amenities
             photos: Updated list of photos (max 3)
+            address: Updated hotel address
 
         Returns:
             Dictionary containing the updated hotel data, or None if not found
@@ -206,6 +212,8 @@ class SavedHotelsService:
         if photos is not None:
             # Limit to max 3 photos
             update_data["photos"] = photos[:3] if len(photos) > 3 else photos
+        if address is not None:
+            update_data["address"] = address
 
         if not update_data:
             raise ValueError("No fields to update")

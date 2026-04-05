@@ -143,6 +143,7 @@ class HotelManagementService:
                 "long": hotel_data.get("long"),
                 "amenities": hotel_data.get("amenities"),
                 "photos": hotel_data.get("photos"),
+                "address": hotel_data.get("address"),
             }
 
             # Validate required fields
@@ -283,6 +284,9 @@ class HotelManagementService:
             # Transform photos (max 3)
             photos = self._extract_photos(hotel_data)
 
+            # Transform address
+            address = self._extract_address(hotel_data)
+
             # Build transformed hotel data
             transformed_data = {
                 "name": name,
@@ -310,6 +314,8 @@ class HotelManagementService:
                 transformed_data["amenities"] = amenities
             if photos:
                 transformed_data["photos"] = photos
+            if address:
+                transformed_data["address"] = address
 
             return transformed_data
 
@@ -681,6 +687,21 @@ class HotelManagementService:
                 return [str(a) for a in amenities]
             elif isinstance(amenities, str):
                 return amenities.split(",")
+        return None
+
+    def _extract_address(self, hotel_data: Dict[str, Any]) -> Optional[str]:
+        """Extract address from hotel data."""
+        # Try different field names for address
+        address = (
+            hotel_data.get("address") or
+            hotel_data.get("full_address") or
+            hotel_data.get("street_address") or
+            hotel_data.get("location") or
+            hotel_data.get("address_line_1")
+        )
+
+        if address:
+            return str(address).strip()
         return None
 
     def _extract_photos(self, hotel_data: Dict[str, Any]) -> Optional[List[str]]:
