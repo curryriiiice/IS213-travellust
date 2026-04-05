@@ -1,13 +1,20 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Compass, Sun, Moon, User, Mail, MapPin, Calendar, ArrowLeft } from "lucide-react";
+import { Compass, Sun, Moon, User, Mail, MapPin, Calendar, ArrowLeft, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useAuth } from "@/hooks/useAuth";
 
 const Profile = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -80,6 +87,18 @@ const Profile = () => {
               </div>
               <Switch checked={theme === "light"} onCheckedChange={toggleTheme} />
             </div>
+          </div>
+
+          {/* Logout */}
+          <div className="mt-10 pt-6 border-t border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs text-muted-foreground hover:text-red-400 hover:bg-red-400/10 hover:border-red-400/40"
+              onClick={handleLogout}
+            >
+              <LogOut className="w-3.5 h-3.5" /> Sign out
+            </Button>
           </div>
         </motion.div>
       </div>
