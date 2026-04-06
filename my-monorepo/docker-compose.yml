@@ -24,16 +24,22 @@ services:
       context: ./apps/notifications
       dockerfile: Dockerfile
     ports:
-      - '5014:5000'
+      - '5013:5000'
     env_file:
       - .env
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
+      - FLASK_PORT=5000
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      - rabbitmq
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   flight-search-wrapper:
     build:
@@ -49,7 +55,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -103,16 +109,14 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
     depends_on:
-      flight-search-wrapper:
-        condition: service_healthy
-      saved-flights:
-        condition: service_healthy
+      - flight-search-wrapper
+      - redis
 
   trips_atomic:
     build:
@@ -125,6 +129,14 @@ services:
     environment:
       - SUPABASE_URL=${TRIPS_SUPABASE_URL}
       - SUPABASE_KEY=${TRIPS_SUPABASE_KEY}
+      - FLASK_PORT=5000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   attractions:
     build:
@@ -137,6 +149,14 @@ services:
     environment:
       - SUPABASE_URL=${ATTRACTIONS_SUPABASE_URL}
       - SUPABASE_KEY=${ATTRACTIONS_SUPABASE_KEY}
+      - FLASK_PORT=5000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   hotel-search-wrapper:
     build:
@@ -161,6 +181,13 @@ services:
         'run',
         '--host=0.0.0.0',
       ]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   saved-hotels:
     build:
@@ -184,6 +211,13 @@ services:
         'run',
         '--host=0.0.0.0',
       ]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   hotel-management:
     build:
@@ -203,6 +237,13 @@ services:
         '-u',
         'hotel_management/hotel_management_app.py',
       ]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   booked_tickets:
     build:
@@ -215,6 +256,14 @@ services:
     environment:
       - SUPABASE_URL=${BOOKED_TICKETS_SUPABASE_URL}
       - SUPABASE_KEY=${BOOKED_TICKETS_SUPABASE_KEY}
+      - FLASK_PORT=5000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   book-attractions:
     build:
@@ -229,6 +278,13 @@ services:
       - ATTRACTIONS_SERVICE_URL=http://attractions:5000
       - BOOKED_TICKETS_SERVICE_URL=http://booked_tickets:5000
       - TRIPS_GET_TRIP_URL_TEMPLATE=http://trips_atomic:5000/api/trips/{trip_id}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       - attractions
       - booked_tickets
@@ -260,6 +316,17 @@ services:
         'run',
         '--host=0.0.0.0',
       ]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - trips_atomic
+      - hotel-management
+      - booked_tickets
 
   book-flight:
     build:
@@ -280,7 +347,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -303,6 +370,14 @@ services:
       - SUPABASE_URL=${TRIPS_SUPABASE_URL}
       - SUPABASE_KEY=${TRIPS_SUPABASE_KEY}
       - PORT=5000
+      - FLASK_PORT=5000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     depends_on:
       - redis
 
@@ -337,9 +412,9 @@ services:
       retries: 3
       start_period: 40s
     depends_on:
-      redis:
-        condition: service_started
-      flight-management:
-          condition: service_healthy
+      - redis
+      - flight-management
+      - hotel-management
+      - trips_atomic
 
 
