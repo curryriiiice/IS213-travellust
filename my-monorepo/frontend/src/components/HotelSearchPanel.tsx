@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { mockHotelResults, hotelCities, type HotelOffer } from "@/data/hotelData";
+import { searchHotels, hotelCities, type HotelOffer } from "@/data/hotelData";
 import {
   Building2,
   Star,
@@ -17,7 +17,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 
-type SortKey = "price" | "rating" | "stars" | "distance";
+type SortKey = "price" | "rating" | "stars";
 
 interface HotelSearchPanelProps {
   onSelectHotel?: (hotel: HotelOffer) => void;
@@ -26,41 +26,38 @@ interface HotelSearchPanelProps {
 }
 
 export function HotelSearchPanel({ onSelectHotel, onClose, embedded }: HotelSearchPanelProps) {
-  const [destination, setDestination] = useState("tokyo");
+  const [destination, setDestination] = useState("");
   const [checkIn, setCheckIn] = useState("2026-04-12");
   const [checkOut, setCheckOut] = useState("2026-04-15");
   const [guests, setGuests] = useState(2);
-  const [rooms, setRooms] = useState(1);
   const [sortBy, setSortBy] = useState<SortKey>("price");
   const [sortAsc, setSortAsc] = useState(true);
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [hotels, setHotels] = useState<HotelOffer[]>([]);
 
   const cityCodes = Object.keys(hotelCities);
 
   const filteredResults = useMemo(() => {
     if (!hasSearched) return [];
-    let results = [...mockHotelResults];
+    let results = [...hotels];
 
     if (maxPrice !== null) {
-      results = results.filter((h) => h.pricePerNight <= maxPrice);
+      results = results.filter((h) => h.price <= maxPrice);
     }
 
     results.sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
         case "price":
-          cmp = a.pricePerNight - b.pricePerNight;
+          cmp = a.price - b.price;
           break;
         case "rating":
-          cmp = a.guestRating - b.guestRating;
+          cmp = a.overall_rating - b.overall_rating;
           break;
         case "stars":
           cmp = a.starRating - b.starRating;
-          break;
-        case "distance":
-          cmp = parseFloat(a.distanceFromCenter) - parseFloat(b.distanceFromCenter);
           break;
       }
       return sortAsc ? cmp : -cmp;
@@ -69,23 +66,29 @@ export function HotelSearchPanel({ onSelectHotel, onClose, embedded }: HotelSear
     return results;
   }, [hasSearched, sortBy, sortAsc, maxPrice]);
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     setIsLoading(true);
     setHasSearched(false);
-    setTimeout(() => {
+    try {
+      const results = await searchHotels(hotelCities[destination] || destination, checkIn, checkOut, guests);
+      setHotels(results);
+    } catch (error) {
+      console.error(error);
+      setHotels([]);
+    } finally {
       setHasSearched(true);
       setIsLoading(false);
-    }, 800);
+    }
   };
 
   const handleSort = (key: SortKey) => {
     if (sortBy === key) setSortAsc(!sortAsc);
-    else { setSortBy(key); setSortAsc(key === "price" || key === "distance"); }
+    else { setSortBy(key); setSortAsc(key === "price"); }
   };
 
   const nights = Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000));
   const minPrice = hasSearched && filteredResults.length > 0
-    ? Math.min(...filteredResults.map((h) => h.pricePerNight))
+    ? Math.min(...filteredResults.map((h) => h.price))
     : 0;
 
   return (
@@ -113,15 +116,13 @@ export function HotelSearchPanel({ onSelectHotel, onClose, embedded }: HotelSear
           <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
             Destination
           </label>
-          <select
+          <input
+            type="text"
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
-            className="w-full h-8 bg-secondary border border-border rounded-sm px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-          >
-            {cityCodes.map((code) => (
-              <option key={code} value={code}>{hotelCities[code]}</option>
-            ))}
-          </select>
+            placeholder="Search city..."
+            className="w-full h-8 bg-secondary border border-border rounded-sm px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-muted-foreground"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -149,35 +150,19 @@ export function HotelSearchPanel({ onSelectHotel, onClose, embedded }: HotelSear
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-              Guests
-            </label>
-            <select
-              value={guests}
-              onChange={(e) => setGuests(Number(e.target.value))}
-              className="w-full h-8 bg-secondary border border-border rounded-sm px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-            >
-              {[1, 2, 3, 4].map((n) => (
-                <option key={n} value={n}>{n} {n === 1 ? "guest" : "guests"}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-              Rooms
-            </label>
-            <select
-              value={rooms}
-              onChange={(e) => setRooms(Number(e.target.value))}
-              className="w-full h-8 bg-secondary border border-border rounded-sm px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-            >
-              {[1, 2, 3, 4].map((n) => (
-                <option key={n} value={n}>{n} {n === 1 ? "room" : "rooms"}</option>
-              ))}
-            </select>
-          </div>
+        <div className="mb-2">
+          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+            Guests
+          </label>
+          <select
+            value={guests}
+            onChange={(e) => setGuests(Number(e.target.value))}
+            className="w-full h-8 bg-secondary border border-border rounded-sm px-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            {[1, 2, 3, 4].map((n) => (
+              <option key={n} value={n}>{n} {n === 1 ? "guest" : "guests"}</option>
+            ))}
+          </select>
         </div>
 
         <Button variant="accent" size="sm" className="w-full" onClick={handleSearch}>
@@ -219,7 +204,7 @@ export function HotelSearchPanel({ onSelectHotel, onClose, embedded }: HotelSear
                   </button>
                 ))}
               </div>
-              {(["price", "rating", "stars", "distance"] as SortKey[]).map((key) => (
+              {(["price", "rating", "stars"] as SortKey[]).map((key) => (
                 <button
                   key={key}
                   onClick={() => handleSort(key)}
@@ -246,8 +231,7 @@ export function HotelSearchPanel({ onSelectHotel, onClose, embedded }: HotelSear
                   key={hotel.id}
                   hotel={hotel}
                   nights={nights}
-                  rooms={rooms}
-                  isCheapest={hotel.pricePerNight === minPrice}
+                  isCheapest={hotel.price === minPrice}
                   onSelect={onSelectHotel}
                 />
               ))}
@@ -283,17 +267,15 @@ export function HotelSearchPanel({ onSelectHotel, onClose, embedded }: HotelSear
 function HotelCard({
   hotel,
   nights,
-  rooms,
   isCheapest,
   onSelect,
 }: {
   hotel: HotelOffer;
   nights: number;
-  rooms: number;
   isCheapest: boolean;
   onSelect?: (hotel: HotelOffer) => void;
 }) {
-  const totalPrice = hotel.pricePerNight * nights * rooms;
+  const totalPrice = hotel.price * nights;
 
   const amenityIcon = (a: string) => {
     const lower = a.toLowerCase();
@@ -313,9 +295,25 @@ function HotelCard({
       className="bg-card border border-border rounded-sm overflow-hidden node-interactive"
     >
       <div className="px-3 py-3 flex gap-3">
-        {/* Placeholder image area */}
-        <div className="w-20 h-20 bg-secondary rounded-sm shrink-0 flex items-center justify-center">
-          <Building2 className="w-6 h-6 text-muted-foreground/30" />
+        {/* Placeholder or actual image area */}
+        <div className="w-20 h-20 bg-secondary rounded-sm shrink-0 flex items-center justify-center overflow-hidden relative">
+          {hotel.thumbnail ? (
+            <img 
+              src={hotel.thumbnail} 
+              alt={hotel.name} 
+              className="w-full h-full object-cover" 
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (hotel.fallbackThumbnail && target.src !== hotel.fallbackThumbnail && !target.src.includes(hotel.fallbackThumbnail)) {
+                  target.src = hotel.fallbackThumbnail;
+                } else {
+                  target.style.display = 'none';
+                }
+              }}
+            />
+          ) : (
+            <Building2 className="w-6 h-6 text-muted-foreground/30" />
+          )}
         </div>
 
         {/* Info */}
@@ -324,38 +322,49 @@ function HotelCard({
             <div className="min-w-0">
               <h3 className="text-sm font-medium tracking-tight truncate">{hotel.name}</h3>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="flex items-center gap-0.5">
-                  {Array.from({ length: hotel.starRating }).map((_, i) => (
-                    <Star key={i} className="w-2.5 h-2.5 fill-node-attraction text-node-attraction" />
-                  ))}
+                <div className="flex items-center gap-0.5 text-node-hotel">
+                  <Star className="w-2.5 h-2.5 fill-current" />
+                  <span className="text-[10px] font-mono font-medium">{hotel.overall_rating > 0 ? hotel.overall_rating : "N/A"}</span>
                 </div>
-                <span className="text-[10px] font-mono text-muted-foreground">{hotel.chain}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  ({hotel.reviews?.toLocaleString() || 0} reviews)
+                </span>
+                {hotel.chain && <span className="text-[10px] font-mono text-muted-foreground ml-1">{hotel.chain}</span>}
               </div>
+              {hotel.distanceFromCenter && (
+                <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1 text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3 block" />
+                    <span className="text-[10px] font-mono leading-tight">{hotel.distanceFromCenter}</span>
+                  </div>
+                  {hotel.locationRating && hotel.locationRating > 0 && (
+                    <div className="flex items-center gap-1.5 border-l border-border pl-2">
+                      <span className="text-[10px] font-mono leading-tight">Location: <span className="text-foreground font-medium">{hotel.locationRating}/5</span></span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="text-right shrink-0">
               <span className="text-sm font-mono tabular-nums font-medium block">
-                ${hotel.pricePerNight}
+                {hotel.price === 0 ? "Unavailable" : `$${hotel.price}`}
               </span>
               <span className="text-[9px] text-muted-foreground font-mono">/night</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 mt-1.5">
-            <MapPin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
-            <span className="text-[10px] text-muted-foreground font-mono truncate">
-              {hotel.distanceFromCenter} from center
-            </span>
-          </div>
+          {hotel.address && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <MapPin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+              <span className="text-[10px] text-muted-foreground font-mono truncate">
+                {hotel.address}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center gap-2">
-              {/* Badges */}
-              <Badge
-                variant="outline"
-                className="text-[8px] px-1 py-0 border-node-hotel/30 text-node-hotel"
-              >
-                {hotel.guestRating}
-              </Badge>
+
               {isCheapest && (
                 <Badge variant="outline" className="text-[8px] px-1 py-0 border-accent/30 text-accent">
                   Best Value

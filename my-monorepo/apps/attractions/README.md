@@ -6,6 +6,8 @@ Dedicated attractions microservice for TravelLust.
 
 - `GET /health` checks the service is up
 - `GET /api/catalog/attractions` lists searchable catalog attractions
+- `GET /api/catalog/attractions/locations` lists distinct catalog attraction locations
+- `GET /api/catalog/attractions/location/<location>` lists catalog attractions for one location
 - `GET /api/catalog/attractions/<catalog_attraction_id>` fetches one catalog attraction
 - `GET /api/attractions` lists all attractions
 - `GET /api/trips/<trip_id>/attractions` lists attractions for one trip

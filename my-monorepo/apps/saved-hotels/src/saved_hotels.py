@@ -40,6 +40,7 @@ class SavedHotelsService:
         rate_per_night: Optional[float] = None,
         lat: Optional[float] = None,
         long: Optional[float] = None,
+        address: Optional[str] = None,
         amenities: Optional[List[str]] = None,
         photos: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
@@ -58,6 +59,7 @@ class SavedHotelsService:
             rate_per_night: Rate per night
             lat: Latitude
             long: Longitude
+            address: Hotel address
             amenities: List of amenities
             photos: List of photo URLs (max 3)
 
@@ -85,6 +87,8 @@ class SavedHotelsService:
             hotel_data["lat"] = lat
         if long is not None:
             hotel_data["long"] = long
+        if address:
+            hotel_data["address"] = address
         if amenities:
             hotel_data["amenities"] = amenities
         if photos:
@@ -155,6 +159,7 @@ class SavedHotelsService:
         rate_per_night: Optional[float] = None,
         lat: Optional[float] = None,
         long: Optional[float] = None,
+        address: Optional[str] = None,
         amenities: Optional[List[str]] = None,
         photos: Optional[List[str]] = None,
     ) -> Optional[Dict[str, Any]]:
@@ -173,6 +178,7 @@ class SavedHotelsService:
             rate_per_night: Updated rate per night
             lat: Updated latitude
             long: Updated longitude
+            address: Updated address
             amenities: Updated list of amenities
             photos: Updated list of photos (max 3)
 
@@ -201,6 +207,8 @@ class SavedHotelsService:
             update_data["lat"] = lat
         if long is not None:
             update_data["long"] = long
+        if address is not None:
+            update_data["address"] = address
         if amenities is not None:
             update_data["amenities"] = amenities
         if photos is not None:

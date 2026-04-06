@@ -8,10 +8,13 @@ export interface AttractionOffer {
   price: number;
   currency: string;
   durationMinutes: number;
+  bestTimeToVisit?: string;
   rating: number;
   reviewCount: number;
   openingHours: string;
   address: string;
+  gmapsLink?: string;
+  imageUrl?: string;
 }
 
 export const attractionCities: Record<string, string> = {

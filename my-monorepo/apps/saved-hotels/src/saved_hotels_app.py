@@ -79,6 +79,7 @@ def create_hotel():
             rate_per_night=hotel_data.get("rate_per_night"),
             lat=hotel_data.get("lat"),
             long=hotel_data.get("long"),
+            address=hotel_data.get("address"),
             amenities=hotel_data.get("amenities"),
             photos=hotel_data.get("photos"),
         )
@@ -110,6 +111,7 @@ def update_hotel(hotel_id):
             rate_per_night=data.get("rate_per_night"),
             lat=data.get("lat"),
             long=data.get("long"),
+            address=data.get("address"),
             amenities=data.get("amenities"),
             photos=data.get("photos"),
         )
