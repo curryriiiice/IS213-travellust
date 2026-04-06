@@ -475,8 +475,16 @@ function AttractionDetail({ attraction, onBook }: { attraction: AttractionOffer;
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       <div className="bg-card border border-border rounded-sm overflow-hidden">
-        <div className="h-48 bg-secondary flex items-center justify-center border-b border-border">
-          <MapPin className="w-16 h-16 text-muted-foreground/20" />
+        <div className="h-48 bg-secondary flex items-center justify-center border-b border-border overflow-hidden">
+          {attraction.imageUrl ? (
+            <img
+              src={attraction.imageUrl}
+              alt={attraction.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <MapPin className="w-16 h-16 text-muted-foreground/20" />
+          )}
         </div>
 
         <div className="px-6 py-5">
@@ -489,25 +497,32 @@ function AttractionDetail({ attraction, onBook }: { attraction: AttractionOffer;
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-node-attraction/30 text-node-attraction">
               {attraction.category}
             </Badge>
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-node-hotel/30 text-node-hotel">
-              ★ {attraction.rating}
-            </Badge>
-            <span className="text-[10px] text-muted-foreground font-mono">{attraction.reviewCount.toLocaleString()} reviews</span>
           </div>
 
           <div className="flex items-center gap-1.5 mt-3 text-sm text-muted-foreground">
             <MapPin className="w-3.5 h-3.5 shrink-0" />
-            <span>{attraction.address}</span>
+            {attraction.gmapsLink ? (
+              <a
+                href={attraction.gmapsLink}
+                target="_blank"
+                rel="noreferrer"
+                className="text-node-attraction underline underline-offset-4 break-all"
+              >
+                Open in Google Maps
+              </a>
+            ) : (
+              <span>{attraction.address}</span>
+            )}
           </div>
 
           <p className="text-sm text-muted-foreground mt-3">{attraction.description}</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 py-4 border-t border-border">
-            <InfoBlock icon={Clock} label="Duration" value={
-              attraction.durationMinutes >= 60
-                ? `${Math.floor(attraction.durationMinutes / 60)}h${attraction.durationMinutes % 60 > 0 ? ` ${attraction.durationMinutes % 60}m` : ""}`
-                : `${attraction.durationMinutes}m`
-            } />
+            <InfoBlock
+              icon={Clock}
+              label="Best Time To Visit"
+              value={attraction.bestTimeToVisit || "See operator details"}
+            />
             <InfoBlock icon={Clock} label="Opening Hours" value={attraction.openingHours} />
             <InfoBlock icon={MapPin} label="City" value={`${attraction.city}, ${attraction.country}`} />
           </div>

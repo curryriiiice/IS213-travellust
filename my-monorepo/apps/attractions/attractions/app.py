@@ -164,6 +164,16 @@ def create_app(
         attractions = repo.list_catalog_attractions(search=search)
         return jsonify({"count": len(attractions), "data": attractions}), HTTPStatus.OK
 
+    @app.get("/api/catalog/attractions/location/<location>")
+    def list_catalog_attractions_by_location(location: str):
+        attractions = repo.list_catalog_attractions_by_location(location)
+        return jsonify({"count": len(attractions), "data": attractions}), HTTPStatus.OK
+
+    @app.get("/api/catalog/attractions/locations")
+    def list_catalog_locations():
+        locations = repo.list_catalog_locations()
+        return jsonify({"count": len(locations), "data": locations}), HTTPStatus.OK
+
     @app.get("/api/catalog/attractions/<catalog_attraction_id>")
     def get_catalog_attraction(catalog_attraction_id: str):
         attraction = repo.get_catalog_attraction(catalog_attraction_id)

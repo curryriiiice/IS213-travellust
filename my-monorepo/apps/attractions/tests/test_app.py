@@ -9,6 +9,8 @@ class FakeRepository:
                 "name": "Gardens by the Bay",
                 "location": "Singapore",
                 "gmaps_link": "https://maps.google.com/example",
+                "image_irl": "https://images.example.com/gardens.jpg",
+                "best_time_to_visit": "Late afternoon",
                 "cost": "32.50",
                 "category": "Nature",
                 "description": "Iconic waterfront gardens",
@@ -20,6 +22,8 @@ class FakeRepository:
                 "name": "Universal Studios Singapore",
                 "location": "Sentosa",
                 "gmaps_link": "https://maps.google.com/uss",
+                "image_irl": "https://images.example.com/uss.jpg",
+                "best_time_to_visit": "Morning on weekdays",
                 "cost": "88.00",
                 "category": "Theme Park",
                 "description": "Movie-themed amusement park",
@@ -99,6 +103,17 @@ class FakeRepository:
 
     def get_catalog_attraction(self, catalog_attraction_id):
         return self.catalog_records.get(catalog_attraction_id)
+
+    def list_catalog_attractions_by_location(self, location):
+        location_lower = location.lower()
+        return [
+            record
+            for record in self.catalog_records.values()
+            if (record.get("location") or "").lower() == location_lower
+        ]
+
+    def list_catalog_locations(self):
+        return sorted({record["location"] for record in self.catalog_records.values()})
 
     def list_attractions_by_trip(self, trip_id):
         return [
@@ -243,6 +258,35 @@ def test_search_catalog_attractions():
     data = response.get_json()
     assert data["count"] == 1
     assert data["data"][0]["name"] == "Universal Studios Singapore"
+
+
+def test_list_catalog_attractions_by_location():
+    client = make_client()
+
+    response = client.get("/api/catalog/attractions/location/Singapore")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["count"] == 1
+    assert data["data"][0]["name"] == "Gardens by the Bay"
+
+
+def test_list_catalog_attractions_by_location_returns_empty_list():
+    client = make_client()
+
+    response = client.get("/api/catalog/attractions/location/Seoul")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"count": 0, "data": []}
+
+
+def test_list_catalog_locations():
+    client = make_client()
+
+    response = client.get("/api/catalog/attractions/locations")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"count": 2, "data": ["Sentosa", "Singapore"]}
 
 
 def test_get_catalog_attraction_by_id():

@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, type NavigateFunction } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { airports } from "@/data/flightData";
 import { hotelCities } from "@/data/hotelData";
-import { attractionCities } from "@/data/attractionData";
+import { fetchCatalogAttractionLocations } from "@/api/attraction";
 import { Compass, Plane, Building2, Map, Users, Shield, Search, User, MapPin } from "lucide-react";
 
 type SearchTab = "flights" | "hotels" | "attractions";
@@ -273,9 +273,23 @@ function LandingHotelForm({ navigate }: { navigate: NavigateFunction }) {
 }
 
 function LandingAttractionForm({ navigate }: { navigate: NavigateFunction }) {
-  const [city, setCity] = useState("tokyo");
+  const [city, setCity] = useState("");
   const [date, setDate] = useState("2026-04-12");
-  const cityCodes = Object.keys(attractionCities);
+  const [locations, setLocations] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadLocations = async () => {
+      try {
+        const catalogLocations = await fetchCatalogAttractionLocations();
+        setLocations(catalogLocations);
+      } catch (err) {
+        console.error("Failed to load attraction locations:", err);
+        setLocations([]);
+      }
+    };
+
+    loadLocations();
+  }, []);
 
   const handleSearch = () => {
     const params = new URLSearchParams({ type: "attractions", destination: city, date });
@@ -287,7 +301,12 @@ function LandingAttractionForm({ navigate }: { navigate: NavigateFunction }) {
       <div>
         <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">City</label>
         <select value={city} onChange={(e) => setCity(e.target.value)} className="form-select-style">
-          {cityCodes.map((c) => <option key={c} value={c}>{attractionCities[c]}</option>)}
+          <option value="">All cities</option>
+          {locations.map((location) => (
+            <option key={location} value={location}>
+              {location}
+            </option>
+          ))}
         </select>
       </div>
       <div>
