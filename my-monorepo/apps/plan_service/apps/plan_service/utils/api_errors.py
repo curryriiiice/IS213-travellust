@@ -41,3 +41,12 @@ class InternalServerError(Exception):
         self.message = message
         self.status_code = 500
         super().__init__(self.message)
+
+
+class UnauthorizedError(Exception):
+    """Raised when user is not authorized to perform an action"""
+
+    def __init__(self, message: str):
+        self.message = message
+        self.status_code = 403
+        super().__init__(self.message)
