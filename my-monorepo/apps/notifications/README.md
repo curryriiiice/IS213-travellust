@@ -112,15 +112,15 @@ connection.close()
 ### `booking.success`
 ```json
 {
-  "user_id": 1,
-  "booking_id": 42
+  "user_id": [1, 2],
+  "booking_id": [42, 43]
 }
 ```
 
 ### `booking.failure`
 ```json
 {
-  "user_id": 1,
+  "user_id": [1, 2],
   "reason": "No seats available"
 }
 ```
