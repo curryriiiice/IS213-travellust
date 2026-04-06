@@ -7,6 +7,7 @@ Composite service that orchestrates attraction booking using the `attractions`,
 
 - `GET /health` checks the service is up
 - `POST /api/book-attractions` validates trip users, fetches attraction details, and creates booked tickets
+- Publishes booking outcome events to RabbitMQ for the notifications service
 
 ## Request flow
 
@@ -36,17 +37,69 @@ record with:
 - the same `f_h_a_id` as the attraction being booked
 
 Before calling `booked_tickets`, the service simulates a 1-in-5 booking failure.
-This is useful for testing unsuccessful bookings now and prepares the flow for a
-future activity-log microservice via AMQP.
+This is useful for testing unsuccessful bookings now and publishes a
+`booking.failure` event to the shared notifications exchange.
 
 One booked ticket record is created per ticket holder.
+
+When the booking succeeds, the service publishes one request-level
+`booking.success` event with the payer, trip, attraction, ticket-holder IDs, and
+created `booked_ticket_id` values.
 
 ## Environment variables
 
 - `ATTRACTIONS_SERVICE_URL`: base URL for the attractions service
 - `BOOKED_TICKETS_SERVICE_URL`: base URL for the booked_tickets service
 - `TRIPS_GET_TRIP_URL_TEMPLATE`: URL template to fetch a trip by id. Use `{trip_id}` as the placeholder.
+- `RABBITMQ_HOST`: RabbitMQ hostname, defaults to `rabbitmq`
+- `RABBITMQ_PORT`: RabbitMQ AMQP port, defaults to `5672`
+- `RABBITMQ_EXCHANGE`: exchange name, defaults to `travellust_notifications`
 - `PORT`: Flask port, defaults to `5015`
+
+## Notification events
+
+This service publishes to the existing notifications exchange:
+
+- Exchange: `travellust_notifications`
+- Type: `topic`
+- Routing keys: `booking.success`, `booking.failure`
+
+Example `booking.success` payload:
+
+```json
+{
+  "service": "book-attractions",
+  "trip_id": "9bcb60a4-b690-4d52-88f7-345626c903d5",
+  "attraction_id": "11111111-1111-1111-1111-111111111111",
+  "attraction_name": "Gardens by the Bay",
+  "paid_by": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "user_id": [
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+  ],
+  "booking_id": [101, 102],
+  "cost": "99.99",
+  "status": "success"
+}
+```
+
+Example `booking.failure` payload:
+
+```json
+{
+  "service": "book-attractions",
+  "trip_id": "9bcb60a4-b690-4d52-88f7-345626c903d5",
+  "attraction_id": "11111111-1111-1111-1111-111111111111",
+  "attraction_name": "Gardens by the Bay",
+  "paid_by": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "user_id": [
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+  ],
+  "reason": "Simulated booking failure. Please try again.",
+  "status": "failure"
+}
+```
 
 ## Run locally
 
