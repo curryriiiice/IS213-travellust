@@ -1,9 +1,12 @@
-from crypt import methods
-
 from flask import Blueprint, request, jsonify
 from ..services.flight_plan_service import FlightPlanService
 from ..services.hotel_plan_service import HotelPlanService
-from ..utils.api_errors import ExternalServiceError, ValidationError, NotFoundError
+from ..utils.api_errors import (
+    ExternalServiceError,
+    ValidationError,
+    NotFoundError,
+    UnauthorizedError,
+)
 
 plan_bp = Blueprint("plan", __name__)
 
@@ -46,7 +49,9 @@ def save_flight():
     try:
         data = request.get_json()
         print(f"📥 Received flight data in plan service: {data}")
-        print(f"🔍 Origin in flight_details: {data.get('flight_details', {}).get('origin')}, Destination: {data.get('flight_details', {}).get('destination')}")
+        print(
+            f"🔍 Origin in flight_details: {data.get('flight_details', {}).get('origin')}, Destination: {data.get('flight_details', {}).get('destination')}"
+        )
 
         # Validate required top-level fields
         required_fields = ["trip_id", "user_id", "flight_details", "cost"]
@@ -205,4 +210,92 @@ def update_hotel():
 
 @plan_bp.route("/api/plan/hotels/delete", methods=["POST"])
 def delete_hotel():
+    """
+    Delete hotels from a trip via hotel-management service
+
+    This endpoint:
+    1. Validates user has access to trip (member_ids check)
+    2. Fetches full hotel data before deletion
+    3. Removes hotel_ids from trip's hotel_ids array
+    4. Soft deletes hotels in saved-hotels service
+    5. Publishes HOTEL_DELETED event to Redis with full hotel data
+
+    Request Body:
+    {
+        "trip_id": "550e8400-e29b-41d4-a716-446655440000",
+        "hotel_ids": ["hotel-uuid-1", "hotel-uuid-2"],
+        "user_id": "123e4567-e89b-12d3-a456-426614174000"
+    }
+
+    Response (200 OK):
+    {
+        "success": true,
+        "data": {
+            "deleted_hotels": [
+                {
+                    "hotel_id": "hotel-uuid-1",
+                    "name": "Hotel Name",
+                    "description": "...",
+                    ...
+                }
+            ],
+            "trip": {
+                "id": "trip-uuid",
+                "hotel_ids": ["remaining-hotel-ids"],
+                ...
+            },
+            "deleted_count": 2,
+            "message": "Hotels deleted successfully"
+        }
+    }
+
+    Error Responses:
+    - 400: Missing required fields or validation errors
+    - 403: User not authorized (not in trip's member_ids)
+    - 404: Trip not found
+    - 503: Downstream services unavailable
+    - 500: Internal server error
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"success": False, "error": "Request body is required"}), 400
+
+        # Delete hotels via service
+        service = HotelPlanService()
+        result = service.delete_hotels(data)
+
+        return jsonify({"success": True, "data": result}), 200
+
+    except ValidationError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except UnauthorizedError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except NotFoundError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except ExternalServiceError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except Exception as e:
+        return jsonify(
+            {"success": False, "error": f"Internal server error: {str(e)}"}
+        ), 500
+
+
+@plan_bp.route("/api/plan/attractions/save", methods=["POST"])
+def save_attraction():
+    return
+
+
+@plan_bp.route("/api/plan/attractions/update", methods=["POST"])
+def update_attraction():
+    return
+
+
+@plan_bp.route("/api/plan/attractions/delete", methods=["POST"])
+def delete_attraction():
     return

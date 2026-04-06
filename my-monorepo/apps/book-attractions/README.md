@@ -46,7 +46,7 @@ One booked ticket record is created per ticket holder.
 - `ATTRACTIONS_SERVICE_URL`: base URL for the attractions service
 - `BOOKED_TICKETS_SERVICE_URL`: base URL for the booked_tickets service
 - `TRIPS_GET_TRIP_URL_TEMPLATE`: URL template to fetch a trip by id. Use `{trip_id}` as the placeholder.
-- `PORT`: Flask port, defaults to `5011`
+- `PORT`: Flask port, defaults to `5015`
 
 ## Run locally
 

@@ -92,3 +92,70 @@ class HotelManagementClient:
             raise ServiceUnavailableError(
                 f"Error communicating with hotel management service: {str(e)}"
             )
+
+    def delete_hotels(self, trip_id: str, hotel_ids: list) -> Dict[str, Any]:
+        """
+        Delete hotels from a trip via hotel-management service.
+
+        Calls hotel-management's /api/hotel/delete endpoint which:
+        1. Removes hotel_ids from trip's hotel_ids array
+        2. Soft deletes hotels in saved-hotels service
+
+        Args:
+            trip_id: UUID of the trip
+            hotel_ids: List of hotel UUIDs to delete
+
+        Returns:
+            Dictionary containing:
+                - updated_trip: Trip data with updated hotel_ids array
+                - soft_deleted_hotels: List of deleted hotel IDs
+                - deleted_count: Number of hotels deleted
+                - status: "success"
+                - message: Success message
+
+        Raises:
+            ServiceUnavailableError: If hotel-management service is unavailable
+            InternalServerError: If hotel-management service returns an error
+            ValueError: If validation fails (400 response)
+        """
+        url = f"{self.base_url}/api/hotel/delete"
+        payload = {"trip_id": trip_id, "hotel_ids": hotel_ids}
+
+        try:
+            response = requests.post(url, json=payload, timeout=self.timeout)
+
+            if response.status_code == 500:
+                error_data = response.json()
+                error_message = error_data.get(
+                    "error", "Unknown error from hotel service"
+                )
+                raise InternalServerError(
+                    f"Hotel management service error: {error_message}"
+                )
+
+            if response.status_code == 400:
+                error_data = response.json()
+                error_message = error_data.get("error", "Invalid request")
+                raise ValueError(f"Invalid delete request: {error_message}")
+
+            if response.status_code != 200:
+                raise InternalServerError(
+                    f"Hotel management service returned status {response.status_code}: {response.text}"
+                )
+
+            return response.json().get("data", {})
+
+        except ValueError:
+            raise
+        except requests.exceptions.ConnectionError as e:
+            raise ServiceUnavailableError(
+                f"Could not connect to hotel management service at {self.base_url}: {str(e)}"
+            )
+        except requests.exceptions.Timeout as e:
+            raise ServiceUnavailableError(
+                f"Hotel management service request timed out after {self.timeout}s: {str(e)}"
+            )
+        except requests.exceptions.RequestException as e:
+            raise ServiceUnavailableError(
+                f"Error communicating with hotel management service: {str(e)}"
+            )

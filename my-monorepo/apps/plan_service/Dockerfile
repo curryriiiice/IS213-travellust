@@ -1,9 +1,9 @@
 FROM python:3.9-slim
 WORKDIR /app
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies with retry logic
+RUN for i in 1 2 3; do apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* && exit 0 || sleep 5; done
 # Install uv package manager
 RUN pip install --no-cache-dir uv
 # Copy dependency files
