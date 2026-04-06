@@ -19,111 +19,140 @@ class HotelPlanService:
         self.hotel_client = HotelManagementClient()
         self.trips_client = TripsClient()
 
-    def save_hotel(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def search_hotels(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Orchestrate hotel save operation.
+        Search for hotels without saving (preview mode).
 
-        This method coordinates:
-        1. Validates required fields
-        2. Validates trip exists
-        3. Calls hotel-management to search and save hotel
-        4. Extracts hotel_id from response
-        5. Updates trips table with new hotel_id
+        This method passes search parameters directly to hotel-management
+        service which calls hotel-search-wrapper.
 
         Args:
-            data: Dictionary with hotel save request data
-                Required: query, check_in_date, check_out_date, trip_id
-                Optional: adults, children, currency, gl, hl, sort_by, rating, save_to_database
+            data: Dictionary with hotel search request data
+                Required: query (or city), check_in_date, check_out_date
+                Optional: adults, children, currency, hl, sort_by, rating
 
         Returns:
             Dictionary containing:
-                - hotel: Saved hotel data
-                - trip: Updated trip data with hotel_id appended
+                - search_results: Raw search results from hotel API
+                - status: "success" or "error"
 
         Raises:
             ValidationError: If required fields are missing
-            NotFoundError: If trip_id doesn't exist
             ServiceUnavailableError: If downstream services are unavailable
             InternalServerError: If downstream services return errors
         """
         # Step 1: Validate required fields
-        self._validate_required_fields(data)
+        if not data.get("query") and not data.get("city"):
+            raise ValidationError("Missing required field: query or city")
 
+        required_fields = ["check_in_date", "check_out_date"]
+        for field in required_fields:
+            if not data.get(field):
+                raise ValidationError(f"Missing required field: {field}")
+
+        # Step 2: Call hotel-management search endpoint
+        search_result = self.hotel_client.search_hotels(data)
+
+        return search_result
+
+    def save_hotel(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Save a pre-selected hotel to database and update trip.
+
+        This method coordinates:
+        1. Validates required fields
+        2. Validates trip exists
+        3. Calls hotel-management to save hotel (which updates trip.hotel_ids internally)
+        4. Publishes HOTEL_ADDED event to Redis
+
+        Args:
+            data: Dictionary with hotel save request data
+                Required: user_id, trip_id, hotel (object)
+                hotel object must contain: name, check_in_date, check_out_date
+                Optional in hotel: description, external_link, link, overall_rating,
+                                  rate_per_night, lat, long, amenities, photos, address
+
+        Returns:
+            Dictionary containing:
+                - hotel: Saved hotel data with hotel_id
+                - trip: Updated trip data (hotel_ids array updated by hotel-management)
+
+        Raises:
+            ValidationError: If required fields are missing
+            NotFoundError: If trip doesn't exist
+            ServiceUnavailableError: If downstream services are unavailable
+            InternalServerError: If downstream services return errors
+        """
+        # Step 1: Validate required fields
+        self._validate_save_fields(data)
+
+        user_id = data.get("user_id")
         trip_id = data.get("trip_id")
+        hotel_data = data.get("hotel")
 
         # Step 2: Validate trip exists
         self.trips_client.get_trip(trip_id)
 
-        # Step 3: Call hotel-management service to search and save hotel
-        hotel_response = self.hotel_client.search_and_save_hotel(data)
-
-        # Step 4: Extract hotel_id from nested response structure
-        # Response structure: {"data": {"saved_hotel": {"hotel_id": "..."}}}
-        hotel_id = self._extract_hotel_id(hotel_response)
-
-        # Step 5: Update trips table with hotel_id
-        updated_trip = self.trips_client.append_hotel_id(trip_id, hotel_id)
-
-        # publish event (updated trip to redis)
-        publish_event(
-            trip_id,
-            "HOTEL_ADDED",
-            hotel_response.get("data", {}).get("saved_hotel", {}),
-            user_id=data.get("user_id"),
+        # Step 3: Call hotel-management service to save hotel
+        # Hotel-management internally:
+        #   - Saves to saved-hotels service
+        #   - Updates trips.hotel_ids array
+        save_response = self.hotel_client.save_hotel(
+            user_id=user_id, trip_id=trip_id, hotel_data=hotel_data
         )
 
-        # Step 6: Return combined response
-        return {
-            "hotel": hotel_response.get("data", {}).get("saved_hotel", {}),
-            "trip": updated_trip,
-        }
+        # Extract saved hotel from response
+        saved_hotel = save_response.get("saved_hotel", {})
 
-    def _validate_required_fields(self, data: Dict[str, Any]) -> None:
+        # Step 4: Publish HOTEL_ADDED event to Redis
+        # Publish AFTER trip is updated (hotel-management does this before returning)
+        # Log error if publish fails, but don't fail the operation
+        try:
+            publish_event(
+                trip_id=trip_id,
+                event_type="HOTEL_ADDED",
+                data=saved_hotel,  # Full hotel data
+                user_id=user_id,
+            )
+        except Exception as e:
+            # Log error but continue - save is more critical than notification
+            logger.error(f"Failed to publish HOTEL_ADDED event to Redis: {str(e)}")
+
+        # Step 5: Get updated trip to return
+        updated_trip = self.trips_client.get_trip(trip_id)
+
+        return {"hotel": saved_hotel, "trip": updated_trip}
+
+    def _validate_save_fields(self, data: Dict[str, Any]) -> None:
         """
-        Validate that all required fields are present.
+        Validate that all required fields for save are present.
 
         Args:
             data: Request data dictionary
 
         Raises:
-            ValidationError: If any required field is missing
+            ValidationError: If any required field is missing or invalid
         """
-        required_fields = ["query", "check_in_date", "check_out_date", "trip_id"]
+        # Check top-level fields
+        if not data.get("user_id"):
+            raise ValidationError("Missing required field: user_id")
 
-        for field in required_fields:
-            if not data.get(field):
-                raise ValidationError(f"Missing required field: {field}")
+        if not data.get("trip_id"):
+            raise ValidationError("Missing required field: trip_id")
 
-    def _extract_hotel_id(self, hotel_response: Dict[str, Any]) -> str:
-        """
-        Extract hotel_id from hotel-management service response.
+        if not data.get("hotel"):
+            raise ValidationError("Missing required field: hotel")
 
-        Args:
-            hotel_response: Response from hotel-management service
+        # Validate hotel is a dict
+        hotel_data = data.get("hotel")
+        if not isinstance(hotel_data, dict):
+            raise ValidationError("hotel must be an object")
 
-        Returns:
-            Hotel UUID string
-
-        Raises:
-            InternalServerError: If hotel_id cannot be extracted from response
-        """
-        try:
-            # Response path: data -> saved_hotel -> hotel_id
-            data = hotel_response.get("data", {})
-            saved_hotel = data.get("saved_hotel", {})
-            hotel_id = saved_hotel.get("hotel_id")
-
-            if not hotel_id:
-                raise ValueError("hotel_id not found in response")
-
-            return hotel_id
-
-        except (KeyError, AttributeError, ValueError) as e:
-            from ..utils.api_errors import InternalServerError
-
-            raise InternalServerError(
-                f"Failed to extract hotel_id from hotel service response: {str(e)}"
-            )
+        # Check required fields in hotel object
+        required_hotel_fields = ["name", "check_in_date", "check_out_date"]
+        for field in required_hotel_fields:
+            if not hotel_data.get(field):
+                raise ValidationError(f"Missing required field in hotel: {field}")
 
     def delete_hotels(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -137,40 +137,115 @@ def delete_flight():
     return
 
 
-@plan_bp.route("/api/plan/hotels/save", methods=["POST"])
-def save_hotel():
+@plan_bp.route("/api/plan/hotels/search", methods=["POST"])
+def search_hotels():
     """
-    Save a hotel via hotel-management service and update trips table
+    Search for hotels without saving (preview results).
 
-    Request Body (flat structure):
+    This endpoint allows frontend to browse hotels before selecting one to save.
+    Calls hotel-management's /api/search endpoint.
+
+    Request Body:
     {
-        "query": "Bali Resorts",
-        "check_in_date": "2026-04-01",
-        "check_out_date": "2026-04-08",
-        "trip_id": "550e8400-e29b-41d4-a716-446655440000",
+        "query": "hotels near Singapore",
+        "check_in_date": "2026-04-15",
+        "check_out_date": "2026-04-17",
         "adults": 2,
         "children": 0,
         "currency": "SGD",
-        "gl": "sg",
         "hl": "en",
-        "sort_by": 3,
-        "rating": 8,
-        "save_to_database": true,
-        "user_id" : uuid
+        "sort_by": 3,         // Optional: 3=price, 8=rating, 13=reviews
+        "rating": 8           // Optional: 7=3.5+, 8=4.0+, 9=4.5+
     }
 
-    Response:
+    Response (200 OK):
+    {
+        "success": true,
+        "data": {
+            "search_results": {
+                "properties": [
+                    {
+                        "name": "Marina Bay Sands",
+                        "rate_per_night": {...},
+                        "overall_rating": 4.8,
+                        "amenities": [...],
+                        "photos": [...],
+                        ...
+                    }
+                ],
+                ...
+            },
+            "status": "success"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"success": False, "error": "Request body is required"}), 400
+
+        # Search hotels via service
+        service = HotelPlanService()
+        result = service.search_hotels(data)
+
+        return jsonify({"success": True, "data": result}), 200
+
+    except ValidationError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except ExternalServiceError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+
+    except Exception as e:
+        return jsonify(
+            {"success": False, "error": f"Internal server error: {str(e)}"}
+        ), 500
+
+
+@plan_bp.route("/api/plan/hotels/save", methods=["POST"])
+def save_hotel():
+    """
+    Save a pre-selected hotel to the database and update trip.
+
+    Frontend should:
+    1. Call /api/plan/hotels/search to get hotel options
+    2. User selects a hotel from search results
+    3. Call this endpoint with full hotel data
+
+    Request Body:
+    {
+        "user_id": "123e4567-e89b-12d3-a456-426614174000",
+        "trip_id": "550e8400-e29b-41d4-a716-446655440000",
+        "hotel": {
+            "name": "Marina Bay Sands",
+            "check_in_date": "2025-04-15",
+            "check_out_date": "2025-04-17",
+            "description": "Luxury hotel with iconic rooftop infinity pool",
+            "external_link": "https://www.marinabaysands.com",
+            "link": "marina-bay-sands-token",
+            "overall_rating": 4.8,
+            "rate_per_night": 450.00,
+            "lat": 1.2834,
+            "long": 103.8607,
+            "amenities": ["Pool", "WiFi", "Gym"],
+            "photos": ["url1", "url2", "url3"],
+            "address": "10 Bayfront Ave, Singapore 018956"
+        }
+    }
+
+    Response (201 Created):
     {
         "success": true,
         "data": {
             "hotel": {
                 "hotel_id": "uuid-string",
-                "name": "Hotel Name",
+                "name": "Marina Bay Sands",
                 ...
             },
             "trip": {
                 "id": "trip-uuid",
-                "hotel_ids": ["hotel-id-1", "hotel-id-2", "new-hotel-id"],
+                "hotel_ids": ["hotel-1", "hotel-2", "new-hotel-id"],
                 ...
             }
         }
