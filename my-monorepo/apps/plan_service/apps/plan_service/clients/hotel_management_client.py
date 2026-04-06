@@ -3,7 +3,11 @@
 import requests
 from typing import Dict, Any
 from ..config import Config
-from ..utils.api_errors import ServiceUnavailableError, InternalServerError
+from ..utils.api_errors import (
+    ServiceUnavailableError,
+    InternalServerError,
+    ValidationError,
+)
 
 
 class HotelManagementClient:
@@ -61,7 +65,7 @@ class HotelManagementClient:
             if response.status_code == 400:
                 error_data = response.json()
                 error_message = error_data.get("error", "Invalid request")
-                raise ValueError(f"Invalid search parameters: {error_message}")
+                raise ValidationError(f"Invalid search parameters: {error_message}")
 
             if response.status_code != 200:
                 raise InternalServerError(
@@ -70,7 +74,7 @@ class HotelManagementClient:
 
             return response.json().get("data", {})
 
-        except ValueError:
+        except ValidationError:
             raise
         except requests.exceptions.ConnectionError as e:
             raise ServiceUnavailableError(
@@ -135,7 +139,7 @@ class HotelManagementClient:
             if response.status_code == 400:
                 error_data = response.json()
                 error_message = error_data.get("error", "Invalid request")
-                raise ValueError(f"Invalid hotel data: {error_message}")
+                raise ValidationError(f"Invalid hotel data: {error_message}")
 
             if response.status_code != 200:
                 raise InternalServerError(
@@ -144,7 +148,7 @@ class HotelManagementClient:
 
             return response.json().get("data", {})
 
-        except ValueError:
+        except ValidationError:
             raise
         except requests.exceptions.ConnectionError as e:
             raise ServiceUnavailableError(
@@ -202,7 +206,7 @@ class HotelManagementClient:
             if response.status_code == 400:
                 error_data = response.json()
                 error_message = error_data.get("error", "Invalid request")
-                raise ValueError(f"Invalid delete request: {error_message}")
+                raise ValidationError(f"Invalid delete request: {error_message}")
 
             if response.status_code != 200:
                 raise InternalServerError(
@@ -211,7 +215,7 @@ class HotelManagementClient:
 
             return response.json().get("data", {})
 
-        except ValueError:
+        except ValidationError:
             raise
         except requests.exceptions.ConnectionError as e:
             raise ServiceUnavailableError(

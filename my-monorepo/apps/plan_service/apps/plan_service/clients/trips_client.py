@@ -126,3 +126,68 @@ class TripsClient:
             raise ServiceUnavailableError(
                 f"Error communicating with trips service: {str(e)}"
             )
+
+    def append_flight_id(self, trip_id: str, flight_id: str) -> Dict[str, Any]:
+        """
+        Append a flight_id to the trip's flight_ids array.
+
+        This method:
+        1. Fetches the current trip data
+        2. Extracts the existing flight_ids array (or initializes as empty list)
+        3. Appends the new flight_id
+        4. Updates the trip with PUT request
+
+        Args:
+            trip_id: Trip UUID to update
+            flight_id: Flight UUID to append to flight_ids array
+
+        Returns:
+            Updated trip data dictionary
+
+        Raises:
+            NotFoundError: If trip not found
+            ServiceUnavailableError: If trips service is unavailable
+            InternalServerError: If trips service returns an error
+        """
+        # Step 1: Get current trip data
+        trip_data = self.get_trip(trip_id)
+
+        # Step 2: Extract and update flight_ids array
+        flight_ids = trip_data.get("flight_ids", [])
+        if not isinstance(flight_ids, list):
+            flight_ids = []
+
+        # Append new flight_id if not already present
+        if flight_id not in flight_ids:
+            flight_ids.append(flight_id)
+
+        # Step 3: Update trip with new flight_ids array
+        url = f"{self.base_url}/api/trips/{trip_id}"
+        payload = {"flight_ids": flight_ids}
+
+        try:
+            response = requests.put(url, json=payload, timeout=self.timeout)
+
+            if response.status_code == 404:
+                raise NotFoundError(f"Trip with ID {trip_id} not found")
+
+            if response.status_code != 200:
+                raise InternalServerError(
+                    f"Failed to update trip. Trips service returned status {response.status_code}: {response.text}"
+                )
+
+            data = response.json()
+            return data.get("data", {})
+
+        except requests.exceptions.ConnectionError as e:
+            raise ServiceUnavailableError(
+                f"Could not connect to trips service at {self.base_url}: {str(e)}"
+            )
+        except requests.exceptions.Timeout as e:
+            raise ServiceUnavailableError(
+                f"Trips service request timed out after {self.timeout}s: {str(e)}"
+            )
+        except requests.exceptions.RequestException as e:
+            raise ServiceUnavailableError(
+                f"Error communicating with trips service: {str(e)}"
+            )

@@ -35,7 +35,7 @@ services:
       - rabbitmq
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,7 +55,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -109,7 +109,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -132,7 +132,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -152,7 +152,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -183,7 +183,7 @@ services:
       ]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -213,7 +213,7 @@ services:
       ]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -231,15 +231,10 @@ services:
       - SUPABASE_URL=${HOTELS_SUPABASE_URL}
       - SUPABASE_KEY=${HOTELS_SUPABASE_KEY}
       - FLASK_PORT=5000
-    command:
-      [
-        'python',
-        '-u',
-        'hotel_management/hotel_management_app.py',
-      ]
+    command: ['python', '-u', 'hotel_management/hotel_management_app.py']
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -259,7 +254,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -280,7 +275,7 @@ services:
       - TRIPS_GET_TRIP_URL_TEMPLATE=http://trips_atomic:5000/api/trips/{trip_id}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -318,7 +313,7 @@ services:
       ]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -347,7 +342,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -373,7 +368,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -397,6 +392,10 @@ services:
       - HOTEL_MANAGEMENT_PORT=5000
       - TRIPS_ATOMIC_HOST=trips_atomic
       - TRIPS_ATOMIC_PORT=5000
+      - SAVED_HOTELS_HOST=saved-hotels
+      - SAVED_HOTELS_PORT=5000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
@@ -416,5 +415,4 @@ services:
       - flight-management
       - hotel-management
       - trips_atomic
-
-
+      - saved-hotels

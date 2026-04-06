@@ -15,7 +15,7 @@ class SavedHotelsClient:
 
     def __init__(self):
         """Initialize the Saved Hotels client with service URL."""
-        self.base_url = "http://saved-hotels:5000"
+        self.base_url = f"http://{Config.SAVED_HOTELS_HOST}:{Config.SAVED_HOTELS_PORT}"
         self.timeout = Config.REQUEST_TIMEOUT
 
     def get_hotel(self, hotel_id: str) -> Optional[Dict[str, Any]]:
