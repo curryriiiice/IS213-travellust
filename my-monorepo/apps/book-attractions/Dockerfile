@@ -6,7 +6,7 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock* README.md ./
 
-RUN uv sync --frozen --no-install-project --no-dev
+RUN uv sync --no-install-project --no-dev
 
 COPY book_attractions/ ./book_attractions/
 

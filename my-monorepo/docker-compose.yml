@@ -273,6 +273,9 @@ services:
       - ATTRACTIONS_SERVICE_URL=http://attractions:5000
       - BOOKED_TICKETS_SERVICE_URL=http://booked_tickets:5000
       - TRIPS_GET_TRIP_URL_TEMPLATE=http://trips_atomic:5000/api/trips/{trip_id}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_EXCHANGE=travellust_notifications
     restart: unless-stopped
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
@@ -283,6 +286,7 @@ services:
     depends_on:
       - attractions
       - booked_tickets
+      - rabbitmq
       - trips_atomic
 
   book-hotels:

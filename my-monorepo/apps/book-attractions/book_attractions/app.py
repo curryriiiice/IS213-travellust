@@ -4,6 +4,7 @@ import math
 import os
 import random
 from http import HTTPStatus
+from typing import Callable
 
 from flask import Flask, jsonify, request
 
@@ -13,6 +14,7 @@ from book_attractions.clients import (
     HttpError,
     TripsClient,
 )
+from book_attractions.publisher import publish_booking_event
 
 REQUIRED_FIELDS = {"user_id", "paid_by", "trip_id", "attraction_id"}
 OPTIONAL_FIELDS = {"cost", "cancelled"}
@@ -85,7 +87,7 @@ def _validate_trip_membership(trip_id: str, user_ids: list, trips_client: TripsC
 
 def _should_fail_booking(random_value: float | None = None) -> bool:
     value = random.random() if random_value is None else random_value
-    return math.floor(value * 5) == 0
+    return math.floor(value * 3) == 0
 
 
 def _validate_booked_ticket_record(
@@ -107,17 +109,68 @@ def _validate_booked_ticket_record(
         )
 
 
+def _resolve_booking_cost(payload: dict, attraction: dict) -> object:
+    if "cost" in payload:
+        return payload["cost"]
+    return attraction.get("cost")
+
+
+def _build_success_payload(
+    payload: dict,
+    attraction: dict,
+    booked_ticket_records: list[dict],
+    trip_id: str,
+) -> dict:
+    return {
+        "service": "book-attractions",
+        "trip_id": trip_id,
+        "attraction_id": attraction["attraction_id"],
+        "attraction_name": attraction.get("name"),
+        "paid_by": payload["paid_by"],
+        "user_id": list(payload["user_id"]),
+        "booking_id": [
+            record["booked_ticket_id"] for record in booked_ticket_records
+        ],
+        "cost": _resolve_booking_cost(payload, attraction),
+        "status": "success",
+    }
+
+
+def _build_failure_payload(
+    payload: dict,
+    trip_id: str,
+    reason: str,
+    attraction: dict | None = None,
+) -> dict:
+    return {
+        "service": "book-attractions",
+        "trip_id": trip_id,
+        "attraction_id": (
+            attraction.get("attraction_id")
+            if attraction
+            else payload.get("attraction_id")
+        ),
+        "attraction_name": attraction.get("name") if attraction else None,
+        "paid_by": payload["paid_by"],
+        "user_id": list(payload["user_id"]),
+        "reason": reason,
+        "status": "failure",
+    }
+
+
 def create_app(
     attractions_client: AttractionsClient | None = None,
     booked_tickets_client: BookedTicketsClient | None = None,
     trips_client: TripsClient | None = None,
     random_value_fn=None,
+    publish_event_fn: Callable[[str, dict], bool] | None = None,
 ) -> Flask:
     app = Flask(__name__)
     attractions = attractions_client or AttractionsClient()
     booked_tickets = booked_tickets_client or BookedTicketsClient()
     trips = trips_client or TripsClient()
     draw_random = random_value_fn or random.random
+    publish_event = publish_event_fn or publish_booking_event
 
     @app.get("/health")
     def healthcheck():
@@ -125,6 +178,8 @@ def create_app(
 
     @app.post("/api/book-attractions")
     def book_attraction():
+        payload = None
+        trip_id = None
         try:
             payload = _validate_payload(request.get_json(silent=True))
             trip_id = str(payload["trip_id"])
@@ -138,6 +193,7 @@ def create_app(
         except HttpError as exc:
             return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
 
+        attraction = None
         try:
             attraction = attractions.get_attraction(str(payload["attraction_id"]))
             if attraction is None:
@@ -158,6 +214,15 @@ def create_app(
                 )
 
             if _should_fail_booking(draw_random()):
+                publish_event(
+                    "booking.failure",
+                    _build_failure_payload(
+                        payload,
+                        trip_id,
+                        "Simulated booking failure. Please try again.",
+                        attraction,
+                    ),
+                )
                 return (
                     jsonify(
                         {
@@ -197,7 +262,22 @@ def create_app(
                 )
                 booked_ticket_records.append(booked_ticket_record)
         except HttpError as exc:
+            if payload is not None and trip_id is not None:
+                publish_event(
+                    "booking.failure",
+                    _build_failure_payload(payload, trip_id, str(exc), attraction),
+                )
             return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
+
+        publish_event(
+            "booking.success",
+            _build_success_payload(
+                payload,
+                attraction,
+                booked_ticket_records,
+                trip_id,
+            ),
+        )
 
         return (
             jsonify(
