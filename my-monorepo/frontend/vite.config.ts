@@ -49,6 +49,11 @@ export default defineConfig(() => ({
         target: "http://localhost:5011",
         changeOrigin: true,
       },
+      "/api/collab": {
+        target: "http://localhost:5010",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/collab/, "/api"),
+      },
       "/api": {
         target: "http://localhost:5005",
         changeOrigin: true,
