@@ -9,6 +9,10 @@ interface RawTrip {
   id: string;
   trip_name?: string | null;
   locations?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  budget?: number | null;
+  // legacy columns kept for backwards-compat reads
   trip_date?: string;
   calculated_cost?: number | null;
   flight_ids?: string[] | null;
@@ -23,9 +27,8 @@ function mapRawTrip(raw: RawTrip): Trip {
   // Build a readable destination from locations array
   const destination = raw.locations?.join(", ") || "Unknown destination";
 
-  // Use trip_date as both start and end – the table doesn't split them
-  const startDate = raw.trip_date || "";
-  const endDate = raw.trip_date || "";
+  const startDate = raw.start_date || raw.trip_date || "";
+  const endDate = raw.end_date || raw.start_date || raw.trip_date || "";
 
   return {
     id: raw.id,
@@ -33,7 +36,7 @@ function mapRawTrip(raw: RawTrip): Trip {
     destination,
     startDate,
     endDate,
-    budget: raw.calculated_cost ?? 0,
+    budget: raw.budget ?? raw.calculated_cost ?? 0,
     spent: 0,
     currency: "SGD",
     collaborators: [],          // member_ids are UUIDs; we don't have profiles to map yet
@@ -52,6 +55,7 @@ export async function createTrip(
     name: string;
     destination: string;
     startDate: string;
+    endDate?: string;
     budget: number;
     currency: string;
   }
@@ -62,8 +66,9 @@ export async function createTrip(
     body: JSON.stringify({
       trip_name: data.name,
       locations: [data.destination],
-      trip_date: data.startDate,
-      calculated_cost: data.budget,
+      start_date: data.startDate,
+      end_date: data.endDate || data.startDate,
+      budget: data.budget,
       member_ids: [userId],
     }),
   });

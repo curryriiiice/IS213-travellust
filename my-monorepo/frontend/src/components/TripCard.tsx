@@ -54,7 +54,7 @@ export function TripCard({ trip, onClick }: TripCardProps) {
       <div className="flex items-center justify-between">
         <CollaboratorAvatars collaborators={trip.collaborators} />
         <span className="text-[10px] font-mono text-muted-foreground">
-          {trip.nodes.length} nodes
+          {(trip.flight_ids?.length ?? 0) + (trip.hotel_ids?.length ?? 0) + (trip.attraction_ids?.length ?? 0) + trip.nodes.length} nodes
         </span>
       </div>
     </motion.div>
