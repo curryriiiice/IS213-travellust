@@ -15,6 +15,11 @@ export default defineConfig(() => ({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/book-flight-service/, ""),
       },
+      "/api/book-hotel-service": {
+        target: "http://localhost:5012",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/book-hotel-service/, ""),
+      },
       "/api/booked-tickets": {
         target: "http://localhost:5006",
         changeOrigin: true,
