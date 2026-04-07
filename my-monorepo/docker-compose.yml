@@ -301,10 +301,9 @@ services:
       - TRIPS_ATOMIC_URL=http://trips_atomic:5000
       - HOTEL_MANAGEMENT_URL=http://hotel-management:5000
       - BOOKED_TICKETS_URL=http://booked_tickets:5000
-      - AMQP_URL=${BOOK_HOTELS_AMQP_URL}
-      - AMQP_EXCHANGE=${BOOK_HOTELS_AMQP_EXCHANGE}
-      - AMQP_ROUTING_KEY_ACTIVITY=${BOOK_HOTELS_AMQP_ROUTING_KEY_ACTIVITY}
-      - AMQP_ROUTING_KEY_ERROR=${BOOK_HOTELS_AMQP_ROUTING_KEY_ERROR}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_EXCHANGE=travellust_notifications
     command:
       [
         'python',
@@ -323,6 +322,7 @@ services:
       retries: 3
       start_period: 40s
     depends_on:
+      - rabbitmq
       - trips_atomic
       - hotel-management
       - booked_tickets
@@ -344,6 +344,9 @@ services:
       - BOOKED_TICKETS_HOST=booked_tickets
       - BOOKED_TICKETS_PORT=5000
       - FLASK_PORT=5000
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_EXCHANGE=travellust_notifications
     restart: unless-stopped
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
@@ -352,6 +355,7 @@ services:
       retries: 3
       start_period: 40s
     depends_on:
+      - rabbitmq
       - trips_atomic
       - flight-management
       - booked_tickets
