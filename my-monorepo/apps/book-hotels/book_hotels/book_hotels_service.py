@@ -250,69 +250,85 @@ class BookHotelsService:
             print(f"Failed to send to AMQP broker: {str(e)}")
             return False
 
-    def create_booked_ticket(
+    def create_booked_tickets(
         self,
         user_id: str,
-        trip_id: str,
         hotel_id: str,
         ticket_holder_userids: List[str],
         price: float,
     ) -> Dict[str, Any]:
         """
-        Create a booked_ticket entry in the booked_tickets MS.
+        Create booked_ticket entries in the booked_tickets MS - one per ticket holder.
 
         Args:
-            user_id: User ID who is booking
-            trip_id: Trip ID
-            hotel_id: Hotel ID
+            user_id: User ID who is booking (the payer)
+            hotel_id: Hotel ID (will be stored as f_h_a_id)
             ticket_holder_userids: List of user IDs whose tickets are being paid for
-            price: Booking price
+            price: Booking price per person
 
         Returns:
             Dictionary containing:
-            - booked_ticket: Created booked_ticket data
+            - booked_tickets: List of created booked_ticket data
             - status: Operation status
         """
         try:
-            payload = {
-                "user_id": user_id,
-                "trip_id": trip_id,
-                "hotel_id": hotel_id,
-                "ticket_holder_userids": ticket_holder_userids,
-                "price": price,
-                "booking_date": datetime.utcnow().isoformat(),
-                "status": "booked",
-            }
+            booked_tickets = []
+            errors = []
 
-            response = requests.post(
-                f"{self.booked_tickets_url}/api/booked_tickets",
-                json=payload,
-                timeout=10,
-            )
-
-            if response.status_code != 201 and response.status_code != 200:
-                return {
-                    "booked_ticket": None,
-                    "status": "error",
-                    "error": f"Failed to create booked_ticket: {response.status_code}",
+            # Create one booked ticket record for each ticket holder
+            for ticket_holder_id in ticket_holder_userids:
+                payload = {
+                    "user_id": ticket_holder_id,  # The ticket holder
+                    "f_h_a_id": hotel_id,  # The hotel ID
+                    "cost": price,  # Price per ticket
+                    "paid_by": user_id,  # Who paid for the ticket
+                    "cancelled": False,
                 }
 
-            booked_ticket = response.json()
+                try:
+                    response = requests.post(
+                        f"{self.booked_tickets_url}/api/booked_tickets",
+                        json=payload,
+                        timeout=10,
+                    )
+
+                    if response.status_code != 201 and response.status_code != 200:
+                        errors.append({
+                            "ticket_holder_id": ticket_holder_id,
+                            "error": f"Failed to create booked_ticket: {response.status_code}",
+                        })
+                        continue
+
+                    booked_ticket_data = response.json()
+                    booked_tickets.append(booked_ticket_data.get("data"))
+
+                except requests.exceptions.RequestException as e:
+                    errors.append({
+                        "ticket_holder_id": ticket_holder_id,
+                        "error": f"Failed to communicate with booked_tickets service: {str(e)}",
+                    })
+                except Exception as e:
+                    errors.append({
+                        "ticket_holder_id": ticket_holder_id,
+                        "error": f"Unexpected error: {str(e)}",
+                    })
+
+            if errors:
+                return {
+                    "booked_tickets": booked_tickets,
+                    "status": "partial_success",
+                    "errors": errors,
+                    "message": f"Created {len(booked_tickets)} out of {len(ticket_holder_userids)} tickets successfully.",
+                }
 
             return {
-                "booked_ticket": booked_ticket,
+                "booked_tickets": booked_tickets,
                 "status": "success",
             }
 
-        except requests.exceptions.RequestException as e:
-            return {
-                "booked_ticket": None,
-                "status": "error",
-                "error": f"Failed to communicate with booked_tickets service: {str(e)}",
-            }
         except Exception as e:
             return {
-                "booked_ticket": None,
+                "booked_tickets": booked_tickets,
                 "status": "error",
                 "error": f"Unexpected error: {str(e)}",
             }
@@ -332,7 +348,7 @@ class BookHotelsService:
         2. Gets hotel details with latest price
         3. Simulates booking with a 1 in 50 failure chance
         4. Sends to AMQP broker (activity or error exchange)
-        5. Creates a booked_ticket entry
+        5. Creates booked_ticket entries (one per ticket holder)
         6. Returns booking confirmation
 
         Args:
@@ -345,7 +361,7 @@ class BookHotelsService:
             Dictionary containing:
             - success: Boolean indicating if booking was successful
             - hotel: Hotel details
-            - booked_ticket: Booked ticket details (if successful)
+            - booked_tickets: List of booked ticket details (if successful)
             - message: Confirmation or error message
             - status: Operation status
         """
@@ -368,7 +384,7 @@ class BookHotelsService:
                 return {
                     "success": False,
                     "hotel": None,
-                    "booked_ticket": None,
+                    "booked_tickets": [],
                     "message": "user is not part of this trip",
                     "status": "error",
                 }
@@ -391,7 +407,7 @@ class BookHotelsService:
                 return {
                     "success": False,
                     "hotel": None,
-                    "booked_ticket": None,
+                    "booked_tickets": [],
                     "message": f"Failed to get hotel details: {hotel_details.get('error')}",
                     "status": "error",
                 }
@@ -420,7 +436,7 @@ class BookHotelsService:
                 return {
                     "success": False,
                     "hotel": hotel,
-                    "booked_ticket": None,
+                    "booked_tickets": [],
                     "message": "Booking failed - service temporarily unavailable",
                     "status": "error",
                 }
@@ -438,34 +454,39 @@ class BookHotelsService:
                 is_error=False,
             )
 
-            # Step 5: Create booked_ticket
-            booked_ticket_result = self.create_booked_ticket(
+            # Step 5: Create booked_tickets (one per ticket holder)
+            booked_tickets_result = self.create_booked_tickets(
                 user_id=user_id,
-                trip_id=trip_id,
                 hotel_id=hotel_id,
                 ticket_holder_userids=ticket_holder_userids,
                 price=price or 0.0,
             )
 
-            if booked_ticket_result.get("status") == "error":
+            if booked_tickets_result.get("status") == "error":
                 # Even though ticket creation failed, booking was successful
                 # Log this but return success
-                print(f"Warning: Failed to create booked_ticket: {booked_ticket_result.get('error')}")
+                print(f"Warning: Failed to create booked_tickets: {booked_tickets_result.get('error')}")
 
                 return {
                     "success": True,
                     "hotel": hotel,
-                    "booked_ticket": None,
+                    "booked_tickets": [],
                     "message": "Booking successful! However, ticket recording failed.",
                     "status": "success",
                 }
 
             # Step 6: Return booking confirmation
+            booked_tickets = booked_tickets_result.get("booked_tickets", [])
+            message = f"Booking successful! Your hotel has been booked for {len(ticket_holder_userids)} guest{'s' if len(ticket_holder_userids) > 1 else ''}."
+
+            if booked_tickets_result.get("status") == "partial_success":
+                message = f"Booking successful! Created {len(booked_tickets)} out of {len(ticket_holder_userids)} tickets."
+
             return {
                 "success": True,
                 "hotel": hotel,
-                "booked_ticket": booked_ticket_result.get("booked_ticket"),
-                "message": "Booking successful! Your hotel has been booked.",
+                "booked_tickets": booked_tickets,
+                "message": message,
                 "status": "success",
             }
 
@@ -484,7 +505,7 @@ class BookHotelsService:
             return {
                 "success": False,
                 "hotel": None,
-                "booked_ticket": None,
+                "booked_tickets": [],
                 "message": f"An unexpected error occurred: {str(e)}",
                 "status": "error",
             }
