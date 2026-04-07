@@ -11,6 +11,8 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 active_users = {}
+# Track user connections for notification delivery
+user_connections = {}
 
 PERSISTENT_EVENT_TYPES = {
     "FLIGHT_ADDED",
@@ -22,17 +24,27 @@ PERSISTENT_EVENT_TYPES = {
     "ATTRACTION_DELETED",
 }
 
+
 def build_description(event_type: str, payload: dict) -> str:
     """Build a human-readable description from the event type and its payload."""
     if event_type == "FLIGHT_ADDED":
-        name = f"{payload.get('airline', '')} {payload.get('flight_number', '')}".strip() or "Flight"
+        name = (
+            f"{payload.get('airline', '')} {payload.get('flight_number', '')}".strip()
+            or "Flight"
+        )
         return f"{name} added"
     if event_type == "FLIGHT_UPDATED":
-        name = f"{payload.get('airline', '')} {payload.get('flight_number', '')}".strip() or "Flight"
+        name = (
+            f"{payload.get('airline', '')} {payload.get('flight_number', '')}".strip()
+            or "Flight"
+        )
         return f"{name} updated"
     if event_type == "FLIGHT_DELETED":
         deleted = payload.get("deleted_flight") or {}
-        name = f"{deleted.get('airline', '')} {deleted.get('flight_number', '')}".strip() or "Flight"
+        name = (
+            f"{deleted.get('airline', '')} {deleted.get('flight_number', '')}".strip()
+            or "Flight"
+        )
         return f"{name} removed"
     if event_type == "HOTEL_ADDED":
         return f"{payload.get('name', 'Hotel')} added"
@@ -55,9 +67,7 @@ def verify_user_access(trip_id: str, user_id: str) -> bool:
     if not supabase:
         return True
 
-    response = (
-        supabase.table("trips").select("member_ids").eq("id", trip_id).execute()
-    )
+    response = supabase.table("trips").select("member_ids").eq("id", trip_id).execute()
 
     if not response.data:
         return False
@@ -73,43 +83,79 @@ def get_trip_users(trip_id: str) -> list:
 
 @socketio.on("connect")
 def handle_connect():
-    trip_id = request.args.get("trip_id")
-    user_id = request.args.get("user_id")
+    trip_id = request.args.get(
+        "trip_id"
+    )  # Optional - can be None for notification-only connections
+    user_id = request.args.get("user_id")  # Required
 
-    if not trip_id or not user_id:
-        emit("error", {"message": "trip_id and user_id required"})
+    # user_id is always required
+    if not user_id:
+        emit("error", {"message": "user_id is required"})
         return False
 
-    if not verify_user_access(trip_id, user_id):
-        emit("error", {"message": "Access denied"})
-        return False
+    # Always join the user's personal room for notifications
+    user_room = f"user:{user_id}"
+    join_room(user_room)
 
-    join_room(trip_id)
-    if trip_id not in active_users:
-        active_users[trip_id] = {}
-    active_users[trip_id][user_id] = {"joined_at": datetime.utcnow().isoformat()}
+    # Track user connection
+    if user_id not in user_connections:
+        user_connections[user_id] = set()
+    user_connections[user_id].add(request.sid)
 
-    emit(
-        "user_joined",
-        {"user_id": user_id, "active_users": get_trip_users(trip_id)},
-        room=trip_id,
-        include_self=False,
-    )
+    print(f"User {user_id} joined notification room {user_room}")
 
-    emit(
-        "connected",
-        {
-            "trip_id": trip_id,
-            "user_id": user_id,
-            "active_users": get_trip_users(trip_id),
-        },
-    )
+    # If trip_id is provided, also join the trip room (existing behavior)
+    if trip_id:
+        if not verify_user_access(trip_id, user_id):
+            emit("error", {"message": "Access denied"})
+            return False
+
+        join_room(trip_id)
+        if trip_id not in active_users:
+            active_users[trip_id] = {}
+        active_users[trip_id][user_id] = {"joined_at": datetime.utcnow().isoformat()}
+
+        emit(
+            "user_joined",
+            {"user_id": user_id, "active_users": get_trip_users(trip_id)},
+            room=trip_id,
+            include_self=False,
+        )
+
+        emit(
+            "connected",
+            {
+                "trip_id": trip_id,
+                "user_id": user_id,
+                "active_users": get_trip_users(trip_id),
+            },
+        )
+    else:
+        # Notification-only connection
+        emit(
+            "connected",
+            {
+                "user_id": user_id,
+                "notification_room": user_room,
+            },
+        )
 
 
 @socketio.on("disconnect")
 def handle_disconnect():
     trip_id = request.args.get("trip_id")
     user_id = request.args.get("user_id")
+
+    if user_id:
+        # Leave user notification room
+        user_room = f"user:{user_id}"
+        leave_room(user_room)
+
+        # Remove from user_connections tracking
+        if user_id in user_connections:
+            user_connections[user_id].discard(request.sid)
+            if not user_connections[user_id]:
+                del user_connections[user_id]
 
     if trip_id and user_id:
         leave_room(trip_id)
@@ -160,33 +206,52 @@ def start_redis_listener():
     """Background thread to listen to Redis and broadcast to WebSocket."""
 
     def listen():
-
         redis_client = get_redis_client()
         pubsub = redis_client.pubsub()
-        pubsub.psubscribe("trip:*")
+        # Subscribe to both trip events and user notification events
+        pubsub.psubscribe("trip:*", "user:*")
 
         for message in pubsub.listen():
             try:
                 if message["type"] == "pmessage":
                     channel = message["channel"]
-                    trip_id = channel.split(":")[-1]
                     data = json.loads(message["data"])
-                    print(f"Broadcasting trip_update to room {trip_id}")
-                    socketio.emit("trip_update", data, room=trip_id)
 
-                    event_type = data.get("type", "")
-                    if supabase and event_type in PERSISTENT_EVENT_TYPES:
-                        try:
-                            supabase.table("trip_activity").insert({
-                                "trip_id":     trip_id,
-                                "event_type":  event_type,
-                                "user_id":     data.get("user_id") or None,
-                                "description": build_description(event_type, data.get("data") or {}),
-                                "payload":     data.get("data") or {},
-                                "created_at":  data.get("timestamp", datetime.utcnow().isoformat()),
-                            }).execute()
-                        except Exception as db_err:
-                            print(f"Failed to persist activity log entry: {db_err}")
+                    # Handle trip events (existing behavior)
+                    if channel.startswith("trip:"):
+                        trip_id = channel.split(":")[-1]
+                        print(f"Broadcasting trip_update to room {trip_id}")
+                        socketio.emit("trip_update", data, room=trip_id)
+
+                        event_type = data.get("type", "")
+                        if supabase and event_type in PERSISTENT_EVENT_TYPES:
+                            try:
+                                supabase.table("trip_activity").insert(
+                                    {
+                                        "trip_id": trip_id,
+                                        "event_type": event_type,
+                                        "user_id": data.get("user_id") or None,
+                                        "description": build_description(
+                                            event_type, data.get("data") or {}
+                                        ),
+                                        "payload": data.get("data") or {},
+                                        "created_at": data.get(
+                                            "timestamp", datetime.utcnow().isoformat()
+                                        ),
+                                    }
+                                ).execute()
+                            except Exception as db_err:
+                                print(f"Failed to persist activity log entry: {db_err}")
+
+                    # Handle user notification events (NEW)
+                    elif channel.startswith("user:"):
+                        user_id = channel.split(":")[-1]
+                        user_room = f"user:{user_id}"
+                        print(f"Broadcasting notification to user room {user_room}")
+                        # Emit the notification data directly
+                        notification_data = data.get("data", data)
+                        socketio.emit("notification", notification_data, room=user_room)
+
             except json.JSONDecodeError as e:
                 print(f"Invalid JSON in Redis message: {e}")
             except Exception as e:
@@ -198,4 +263,11 @@ def start_redis_listener():
 if __name__ == "__main__" or __name__ == "collaboration_service.app":
     start_redis_listener()
     port = int(os.getenv("PORT", "5010"))
-    socketio.run(app, host="0.0.0.0", port=port, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        debug=True,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True,
+    )
