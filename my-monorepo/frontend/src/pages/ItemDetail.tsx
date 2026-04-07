@@ -32,7 +32,7 @@ import type { FlightOffer } from "@/data/flightData";
 import type { HotelOffer } from "@/data/hotelData";
 import type { AttractionOffer } from "@/data/attractionData";
 import type { ItineraryNode } from "@/types/trip";
-import { bookFlight } from "@/api/booking";
+import { bookFlight, bookHotel } from "@/api/booking";
 
 const MAIN_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
@@ -70,8 +70,8 @@ const ItemDetail = () => {
     navigate("/booking", { state });
   };
 
-  // For node-type flight items: open passenger selection modal
-  const handleBookFlight = () => {
+  // For node-type flight and hotel items: open guest selection modal
+  const handleBookFlightOrHotel = () => {
     if (state.itemType !== "node") return;
     const memberIds = (state as { memberIds?: string[] }).memberIds ?? [];
     // Pre-select main user if they are in the list
@@ -97,7 +97,8 @@ const ItemDetail = () => {
     };
 
     const tripId = nodeState.tripId;
-    const flightId = nodeState.data.id;
+    const nodeType = nodeState.data.type;
+    const itemId = nodeState.data.id;
 
     if (!tripId) {
       toast({
@@ -110,8 +111,8 @@ const ItemDetail = () => {
 
     if (selectedUserIds.length === 0) {
       toast({
-        title: "No Passengers Selected",
-        description: "Please select at least one passenger.",
+        title: "No Guests Selected",
+        description: "Please select at least one guest.",
         variant: "destructive",
       });
       return;
@@ -119,14 +120,24 @@ const ItemDetail = () => {
 
     setIsBooking(true);
     try {
-      await bookFlight(tripId, MAIN_USER_ID, selectedUserIds, flightId);
-      setIsPassengerModalOpen(false);
-      toast({
-        title: "✈️ Booking Successful",
-        description: `Flight booked for ${selectedUserIds.length} passenger${selectedUserIds.length > 1 ? "s" : ""}. Status updated to Confirmed.`,
-      });
-      // Patch node status locally to "confirmed" — navigate back so Index refreshes
-      // (the backend has persisted the booking; the user can re-open the trip to see the sync)
+      if (nodeType === "flight") {
+        await bookFlight(tripId, MAIN_USER_ID, selectedUserIds, itemId);
+        setIsPassengerModalOpen(false);
+        toast({
+          title: "✈️ Flight Booking Successful",
+          description: `Flight booked for ${selectedUserIds.length} passenger${selectedUserIds.length > 1 ? "s" : ""}. Status updated to Confirmed.`,
+        });
+      } else if (nodeType === "hotel") {
+        await bookHotel(tripId, MAIN_USER_ID, selectedUserIds, itemId);
+        setIsPassengerModalOpen(false);
+        toast({
+          title: "🏨 Hotel Booking Successful",
+          description: `Hotel booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}. Status updated to Confirmed.`,
+        });
+      } else {
+        throw new Error(`Unsupported booking type: ${nodeType}`);
+      }
+      // Navigate back so Index refreshes (the backend has persisted the booking)
       setTimeout(() => navigate(-1), 1200);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -143,11 +154,13 @@ const ItemDetail = () => {
   // Determine what "onBook" means per item type
   const isNodeFlight =
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "flight";
+  const isNodeHotel =
+    state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "hotel";
 
   const onBook = state.fromBookings
     ? undefined
-    : isNodeFlight
-    ? handleBookFlight
+    : isNodeFlight || isNodeHotel
+    ? handleBookFlightOrHotel
     : handleBookGeneric;
 
   // Member IDs for modal
@@ -192,13 +205,13 @@ const ItemDetail = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm font-medium">
               <Users className="w-4 h-4 text-accent" />
-              Select Passengers
+              Select Guests
             </DialogTitle>
           </DialogHeader>
 
           <div className="mt-2 space-y-2">
             <p className="text-xs text-muted-foreground font-mono">
-              Choose which trip members to book tickets for.
+              Choose which trip members to book for.
             </p>
 
             {memberIds.length === 0 ? (
@@ -249,7 +262,7 @@ const ItemDetail = () => {
 
             <div className="pt-2 border-t border-border flex items-center justify-between">
               <span className="text-[10px] font-mono text-muted-foreground">
-                {selectedUserIds.length} passenger{selectedUserIds.length !== 1 ? "s" : ""} selected
+                {selectedUserIds.length} guest{selectedUserIds.length !== 1 ? "s" : ""} selected
               </span>
               {memberIds.length === 0 && (
                 <span className="text-[10px] font-mono text-muted-foreground">
@@ -619,8 +632,9 @@ function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void
 
   const excludedFields = ["price_sgd", "price_usd", "arrival_time"];
 
-  // Determine if this is a bookable flight (status not already confirmed)
+  // Determine if this is a bookable node (status not already confirmed)
   const isFlightNode = node.type === "flight";
+  const isHotelNode = node.type === "hotel";
   const isConfirmed = node.status === "confirmed";
 
   return (
@@ -693,9 +707,9 @@ function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void
               variant="accent"
               size="lg"
               onClick={onBook}
-              disabled={isConfirmed && isFlightNode}
+              disabled={isConfirmed && (isFlightNode || isHotelNode)}
             >
-              {isConfirmed && isFlightNode ? (
+              {isConfirmed && (isFlightNode || isHotelNode) ? (
                 <>
                   <Check className="w-4 h-4 mr-1.5" /> Booked
                 </>
