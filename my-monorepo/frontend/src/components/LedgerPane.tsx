@@ -1,11 +1,15 @@
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
+import { ActivityLog } from "./ActivityLog";
 import type { Trip } from "@/types/trip";
+import type { ActivityLogEntry } from "@/hooks/useCollabSocket";
 
 interface LedgerPaneProps {
   trip: Trip;
+  activeUsers?: string[];
+  activityLog?: ActivityLogEntry[];
 }
 
-export function LedgerPane({ trip }: LedgerPaneProps) {
+export function LedgerPane({ trip, activeUsers = [], activityLog = [] }: LedgerPaneProps) {
   const costByType = trip.nodes.reduce(
     (acc, node) => {
       acc[node.type] = (acc[node.type] || 0) + node.cost;
@@ -39,25 +43,28 @@ export function LedgerPane({ trip }: LedgerPaneProps) {
           Collaborators
         </h3>
         <div className="space-y-2">
-          {trip.collaborators.map((c) => (
-            <div key={c.id} className="flex items-center gap-2">
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium"
-                style={{ backgroundColor: c.color }}
-              >
-                {c.initials}
+          {trip.collaborators.map((c) => {
+            const isOnline = activeUsers.includes(c.id);
+            return (
+              <div key={c.id} className="flex items-center gap-2">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium"
+                  style={{ backgroundColor: c.color }}
+                >
+                  {c.initials}
+                </div>
+                <span className="text-xs">{c.name}</span>
+                {isOnline && (
+                  <span className="text-[10px] text-node-hotel ml-auto">online</span>
+                )}
               </div>
-              <span className="text-xs">{c.name}</span>
-              {c.isOnline && (
-                <span className="text-[10px] text-node-hotel ml-auto">online</span>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* Cost Breakdown */}
-      <div className="p-4 border-b border-border flex-1">
+      <div className="p-4 border-b border-border">
         <h3 className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-3">
           Cost Breakdown
         </h3>
@@ -86,7 +93,7 @@ export function LedgerPane({ trip }: LedgerPaneProps) {
       </div>
 
       {/* Split */}
-      <div className="p-4">
+      <div className="p-4 border-b border-border">
         <h3 className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-3">
           Even Split
         </h3>
@@ -98,6 +105,14 @@ export function LedgerPane({ trip }: LedgerPaneProps) {
             ${perPerson.toFixed(0)} / person
           </span>
         </div>
+      </div>
+
+      {/* Activity Log */}
+      <div className="p-4 flex-1">
+        <h3 className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-3">
+          Activity
+        </h3>
+        <ActivityLog entries={activityLog} collaborators={trip.collaborators} />
       </div>
     </div>
   );
