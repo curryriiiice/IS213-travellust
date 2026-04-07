@@ -15,6 +15,7 @@ import NotFound from "./pages/NotFound.tsx";
 import Booking from "./pages/Booking.tsx";
 import BookedTickets from "./pages/BookedTickets.tsx";
 import AddAttractionToTrip from "./pages/AddAttractionToTrip.tsx";
+import Login from "./pages/Login";
 
 const queryClient = new QueryClient();
 
@@ -28,7 +29,7 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <Routes>
-                <Route path="/" element={<Landing />} />
+                <Route path="/" element={<Login />} />
                 <Route path="/trips" element={<Index />} />
                 <Route path="/search" element={<SearchResults />} />
                 <Route path="/profile" element={<Profile />} />
@@ -36,6 +37,7 @@ const App = () => (
                 <Route path="/booking" element={<Booking />} />
                 <Route path="/bookings" element={<BookedTickets />} />
                 <Route path="/attractions/add-to-trip" element={<AddAttractionToTrip />} />
+                <Route path="/login" element={<Login />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
@@ -48,3 +50,5 @@ const App = () => (
 );
 
 export default App;
+
+
