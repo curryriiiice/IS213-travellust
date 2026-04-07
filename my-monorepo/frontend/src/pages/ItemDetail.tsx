@@ -36,6 +36,57 @@ import type { ItineraryNode } from "@/types/trip";
 import { bookAttraction, bookFlight, cancelAttractionBooking, bookHotel } from "@/api/booking";
 import { deletePlannedAttraction, updatePlannedAttraction } from "@/api/plan";
 
+// Helper to convert ItineraryNode to HotelOffer when coming from booked tickets
+function convertToHotelOffer(node: ItineraryNode): HotelOffer {
+  return {
+    id: node.id,
+    name: node.title,
+    chain: "",
+    city: node.details?.location || "",
+    address: node.details?.address || "",
+    starRating: parseFloat(node.details?.overall_rating || "0"),
+    overall_rating: parseFloat(node.details?.overall_rating || "0"),
+    reviews: 0,
+    price: node.cost,
+    currency: node.currency,
+    roomType: node.details?.room_type || "",
+    amenities: node.details?.amenities?.split(",").map(a => a.trim()) || [],
+    thumbnail: "",
+    fallbackThumbnail: undefined,
+    freeCancellation: node.details?.free_cancellation === "true",
+    breakfastIncluded: node.details?.breakfast_included === "true",
+    distanceFromCenter: "",
+    locationRating: undefined,
+  };
+}
+
+// Helper to convert ItineraryNode to FlightOffer when coming from booked tickets
+function convertToFlightOffer(node: ItineraryNode): FlightOffer {
+  return {
+    id: node.id,
+    airline: node.title,
+    airlineCode: "",
+    flightNumber: node.details?.flight_number || "",
+    origin: node.details?.origin || "",
+    originCity: node.details?.origin || "",
+    destination: node.details?.destination || "",
+    destinationCity: node.details?.destination || "",
+    departureTime: node.time,
+    departureTimeConverted: node.time,
+    arrivalTime: "", // Calculated from departure + duration
+    arrivalTimeConverted: "",
+    duration: node.duration || "",
+    durationMinutes: 0, // Extracted from duration string
+    aircraft: node.details?.aircraft_type || "",
+    cabin: node.details?.cabin || "economy",
+    price: node.cost,
+    currency: node.currency,
+    legroom: node.details?.legroom || "",
+    co2Kg: parseFloat(node.details?.co2_kg || "0"),
+    externalLink: node.details?.external_link || "",
+  };
+}
+
 const MAIN_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
 function addMinutesToTime(time: string, minutesToAdd: number): string {
@@ -68,6 +119,9 @@ const ItemDetail = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const state = location.state as (ItemState & { fromBookings?: boolean }) | null;
+
+  // Extract fromBookings flag with default false
+  const fromBookings = state?.fromBookings || false;
 
   // Passenger selection modal state
   const [isPassengerModalOpen, setIsPassengerModalOpen] = useState(false);
@@ -184,20 +238,19 @@ const ItemDetail = () => {
   const isNodeHotel =
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "hotel";
 
-  const onBook =
-    // For node-type hotel: always show book button (even from bookings)
-    isNodeHotel
-    ? handleBookFlight
-    // For node-type flight: show book button (hide if from bookings)
-    : isNodeFlight
-    ? state.fromBookings ? undefined : handleBookFlight
-    // For attraction: add to trip
-    : state.itemType === "attraction"
-    ? handleAddAttractionToTrip
-    // For generic flight/hotel: show book button (hide if from bookings)
-    : state.itemType === "flight" || state.itemType === "hotel"
-    ? state.fromBookings ? undefined : handleBookGeneric
-    : undefined;
+  // Hide booking actions when coming from BookedTickets
+  // Keep hotel booking visible for price checking and additional nights, hide for others
+  const onBook = fromBookings
+    ? (isNodeHotel ? handleBookGeneric : undefined) // Hotels: keep booking visible
+    : (isNodeHotel
+      ? handleBookFlight
+      : isNodeFlight
+      ? handleBookFlight
+      : state.itemType === "attraction"
+      ? handleAddAttractionToTrip
+      : state.itemType === "flight" || state.itemType === "hotel"
+      ? handleBookGeneric
+      : undefined);
 
   // Member IDs for modal
   const memberIds =
@@ -219,6 +272,12 @@ const ItemDetail = () => {
           </button>
         </div>
         <div className="flex items-center gap-2">
+          {fromBookings ? (
+            <Badge className="bg-green-500/10 text-green-700 hover:bg-green-500/20">
+              <Check className="w-3 h-3 mr-1" />
+              Booked
+            </Badge>
+          ) : null}
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/trips")}>
             My Trips
           </Button>
@@ -229,10 +288,21 @@ const ItemDetail = () => {
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
-        {state.itemType === "flight" && <FlightDetail flight={state.data} onBook={onBook} />}
-        {state.itemType === "hotel" && <HotelDetail hotel={state.data} onBook={onBook} />}
-        {state.itemType === "attraction" && <AttractionDetail attraction={state.data} onBook={onBook} />}
-        {state.itemType === "node" && (
+        {fromBookings && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+            <Check className="w-6 h-6 text-green-600" />
+            <div>
+              <h3 className="text-sm font-semibold text-green-800">Already Booked</h3>
+              <p className="text-xs text-green-700">
+                This {state?.itemType === "flight" ? "flight" : state?.itemType === "hotel" ? "hotel" : "attraction"} has been added to your trip.
+              </p>
+            </div>
+          </div>
+        )}
+        {state?.itemType === "flight" && <FlightDetail flight={state.data} onBook={onBook} />}
+        {state?.itemType === "hotel" && <HotelDetail hotel={state.itemType === "node" ? convertToHotelOffer(state.data) : state.data} onBook={onBook} />}
+        {state?.itemType === "attraction" && <AttractionDetail attraction={state.data} onBook={onBook} />}
+        {state?.itemType === "node" && (
           <NodeDetail
             node={state.data}
             tripId={state.tripId}
@@ -349,6 +419,10 @@ const ItemDetail = () => {
 };
 
 function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => void }) {
+  // Safely access cabin property to prevent undefined errors
+  const cabin = flight?.cabin || "economy";
+  const cabinClass = cabin?.replace?.(/_/g, " ") || cabin || "economy";
+
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       {/* Hero */}
@@ -359,10 +433,10 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
             <span className="text-[10px] font-mono uppercase tracking-widest text-accent">Flight</span>
           </div>
           <h1 className="text-xl font-medium tracking-tight">
-            {flight.origin} → {flight.destination}
+            {flight?.origin} → {flight?.destination}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {flight.airline} · {flight.flightNumber}
+            {flight?.airline} · {flight?.flightNumber}
           </p>
         </div>
 
@@ -393,9 +467,9 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
 
           {/* Details grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 py-4 border-t border-border">
-            <InfoBlock icon={Plane} label="Aircraft" value={flight.aircraft} />
-            <InfoBlock icon={Shield} label="Cabin" value={flight.cabin.replace("_", " ")} />
-            <InfoBlock icon={User} label="Legroom" value={flight.legroom} />
+            <InfoBlock icon={Plane} label="Aircraft" value={flight?.aircraft || "N/A"} />
+            <InfoBlock icon={Shield} label="Cabin" value={cabinClass} />
+            <InfoBlock icon={User} label="Legroom" value={flight?.legroom || "N/A"} />
           </div>
 
           <div className="flex items-center gap-4 py-3 border-t border-border text-xs text-muted-foreground">

@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBookings, type BookingRecord } from "@/contexts/BookingsContext";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getUserBookedTickets } from "@/api/booking";
+import { fetchFlightById } from "@/api/flight";
+import { fetchHotelById } from "@/api/hotel";
+import { fetchAttractionById } from "@/api/attraction";
+import { fetchTripById } from "@/api/trip";
+import type { Trip } from "@/types/trip";
+import { Loader2 } from "lucide-react";
 import {
   ArrowLeft,
   Compass,
@@ -20,8 +27,179 @@ type Filter = "all" | "flight" | "hotel" | "attraction";
 
 const BookedTickets = () => {
   const navigate = useNavigate();
-  const { bookings } = useBookings();
+  const { bookings, setBookings } = useBookings();
   const [filter, setFilter] = useState<Filter>("all");
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  // Get current user ID from localStorage or use a default for development
+  // TODO: Integrate with proper authentication when available
+  const getCurrentUserId = (): string => {
+    const stored = localStorage.getItem("userId");
+    if (stored) return stored;
+    // Development fallback - should be replaced with actual auth
+    return "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  };
+
+  // Format booking date and time as "MMM D, YYYY · HH:mm"
+  const formatBookingDateTime = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }) + " · " + date.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+    } catch {
+      return new Date().toLocaleDateString();
+    }
+  };
+
+  // Safe fetch wrapper to suppress console errors during ticket resolution
+  const safeFetch = async (
+    fetchFn: (id: string) => Promise<any>,
+    id: string
+  ): Promise<any> => {
+    try {
+      return await fetchFn(id);
+    } catch (error) {
+      // Suppress errors during resolution - expected as we try all three services
+      return null;
+    }
+  };
+
+  // Fetch and resolve booked tickets on component mount
+  useEffect(() => {
+    const fetchAndResolveBookings = async () => {
+      if (hasLoaded) return; // Only fetch once
+
+      try {
+        const userId = getCurrentUserId();
+
+        const bookedTickets = await getUserBookedTickets(userId);
+
+        if (bookedTickets.length === 0) {
+          setIsLoading(false);
+          setHasLoaded(true);
+          return;
+        }
+
+        // Simple cache for trip details to avoid duplicate fetches
+        const tripCache = new Map<string, Trip>();
+
+        const getTripMemberCount = async (tripId: string): Promise<number> => {
+          if (tripCache.has(tripId)) {
+            const trip = tripCache.get(tripId)!;
+            return trip.member_ids?.length || 1;
+          }
+
+          const trip = await fetchTripById(tripId);
+          if (trip) {
+            tripCache.set(tripId, trip);
+            return trip.member_ids?.length || 1;
+          }
+          return 1;
+        };
+
+        const getBookingDateTime = (itemType: string, data: any): string => {
+          // Extract proper datetime from the resolved data
+          if (itemType === "flight" && data.details?.datetime_departure) {
+            return data.details.datetime_departure;
+          } else if (itemType === "hotel" && data.details?.datetime_check_in) {
+            return data.details.datetime_check_in;
+          } else if (itemType === "attraction" && data.details?.visit_time) {
+            return data.details.visit_time;
+          } else if (itemType === "attraction" && data.rawVisitTime) {
+            return data.rawVisitTime;
+          }
+          return new Date().toISOString();
+        };
+
+        // Resolve each ticket by trying to fetch from all services
+        const resolvedBookings: BookingRecord[] = await Promise.all(
+          bookedTickets.map(async (ticket) => {
+            const { booked_ticket_id, f_h_a_id, cost } = ticket;
+
+            // Try to fetch from all services in parallel using safeFetch
+            const [flight, hotel, attraction] = await Promise.all([
+              safeFetch(fetchFlightById, f_h_a_id),
+              safeFetch(fetchHotelById, f_h_a_id),
+              safeFetch(fetchAttractionById, f_h_a_id),
+            ]);
+
+            // Determine which service returned valid data
+            if (flight) {
+              const tripId = flight.details?.trip_id;
+              const memberCount = tripId ? await getTripMemberCount(tripId) : 1;
+              const bookingDateTime = getBookingDateTime("flight", flight);
+
+              return {
+                id: booked_ticket_id.toString(),
+                itemType: "flight" as const,
+                title: flight.title,
+                subtitle: flight.subtitle,
+                totalPrice: cost || flight.cost,
+                passengerCount: memberCount,
+                bookedAt: bookingDateTime,
+                data: flight,
+              };
+            } else if (hotel) {
+              const tripId = hotel.details?.trip_id;
+              const memberCount = tripId ? await getTripMemberCount(tripId) : 1;
+              const bookingDateTime = getBookingDateTime("hotel", hotel);
+
+              return {
+                id: booked_ticket_id.toString(),
+                itemType: "hotel" as const,
+                title: hotel.title,
+                subtitle: hotel.subtitle,
+                totalPrice: cost || hotel.cost,
+                passengerCount: memberCount,
+                bookedAt: bookingDateTime,
+                data: hotel,
+              };
+            } else if (attraction) {
+              const tripId = attraction.details?.trip_id;
+              const memberCount = tripId ? await getTripMemberCount(tripId) : 1;
+              const bookingDateTime = getBookingDateTime("attraction", attraction);
+
+              return {
+                id: booked_ticket_id.toString(),
+                itemType: "attraction" as const,
+                title: attraction.title,
+                subtitle: attraction.subtitle,
+                totalPrice: cost || attraction.cost,
+                passengerCount: memberCount,
+                bookedAt: bookingDateTime,
+                data: attraction,
+              };
+            }
+
+            // If no service returned valid data, skip this ticket
+            return null;
+          })
+        );
+
+        // Filter out null bookings and update context
+        const validBookings = resolvedBookings.filter(
+          (booking): booking is BookingRecord => booking !== null
+        );
+
+        setBookings(validBookings);
+      } catch (error) {
+        console.error("Error fetching and resolving bookings:", error);
+      } finally {
+        setIsLoading(false);
+        setHasLoaded(true);
+      }
+    };
+
+    fetchAndResolveBookings();
+  }, [hasLoaded, setBookings]);
 
   const filtered =
     filter === "all"
@@ -98,7 +276,17 @@ const BookedTickets = () => {
 
         {/* Booking List */}
         <AnimatePresence mode="popLayout">
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-center py-16 space-y-3"
+            >
+              <Loader2 className="w-8 h-8 text-muted-foreground/40 mx-auto animate-spin" />
+              <p className="text-sm text-muted-foreground">Loading your bookings...</p>
+            </motion.div>
+          ) : filtered.length === 0 ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -141,11 +329,11 @@ const BookedTickets = () => {
                         <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Calendar className="w-3 h-3" />
-                            {new Date(booking.bookedAt).toLocaleDateString()}
+                            {formatBookingDateTime(booking.bookedAt)}
                           </span>
                           <span className="flex items-center gap-1">
                             <Users className="w-3 h-3" />
-                            {booking.passengerCount} {booking.passengerCount > 1 ? "guests" : "guest"}
+                            {booking.passengerCount} {booking.passengerCount > 1 ? "members" : "member"}
                           </span>
                         </div>
                       </div>
