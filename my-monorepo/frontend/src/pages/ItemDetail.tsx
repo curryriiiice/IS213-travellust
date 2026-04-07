@@ -239,9 +239,9 @@ const ItemDetail = () => {
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "hotel";
 
   // Hide booking actions when coming from BookedTickets
-  // Keep hotel booking visible for price checking and additional nights, hide for others
+  // All booked items should be read-only with disabled buttons
   const onBook = fromBookings
-    ? (isNodeHotel ? handleBookGeneric : undefined) // Hotels: keep booking visible
+    ? undefined // Disable all booking actions for booked items
     : (isNodeHotel
       ? handleBookFlight
       : isNodeFlight
@@ -307,6 +307,7 @@ const ItemDetail = () => {
             node={state.data}
             tripId={state.tripId}
             onBook={onBook}
+            fromBookings={fromBookings}
           />
         )}
       </div>
@@ -679,10 +680,12 @@ function NodeDetail({
   node,
   tripId,
   onBook,
+  fromBookings = false,
 }: {
   node: ItineraryNode;
   tripId?: string;
   onBook?: () => void;
+  fromBookings?: boolean;
 }) {
   const typeConfig = {
     flight: { icon: Plane, color: "text-accent", label: "Flight" },
@@ -745,16 +748,40 @@ function NodeDetail({
     }
   };
 
+  const formatDateOnly = (dateTimeStr: string): string => {
+    try {
+      const date = new Date(dateTimeStr);
+      return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }).format(date);
+    } catch {
+      return dateTimeStr;
+    }
+  };
+
   const fieldLabelMap: Record<string, string> = {
+    // Flight fields
     flight_number: "Flight Number",
     aircraft_type: "Aircraft",
     co2_kg: "CO2 Consumption (kg)",
     datetime_departure: "Departure (Origin/Destination)",
     datetime_arrival: "Arrival (Origin/Destination)",
     external_link: "More Information",
+    // Hotel fields
+    name: "Name",
+    description: "Description",
+    amenities: "Amenities",
+    photos: "Photos",
+    overall_rating: "Overall Rating",
+    datetime_check_in: "Check In Date",
+    datetime_check_out: "Check Out Date",
+    nights: "Nights",
+    rate_per_night: "Nightly Rate",
   };
 
-  const excludedFields = ["price_sgd", "price_usd", "arrival_time"];
+  const excludedFields = ["price_sgd", "price_usd", "arrival_time", "lat", "long", "trip_id", "overall_rating", "nights"];
 
   const isFlightNode = node.type === "flight";
   const isAttractionNode = node.type === "attraction";
@@ -766,26 +793,30 @@ function NodeDetail({
     isAttractionNode &&
     node.sourceType === "catalog";
   const isManualAttraction = isAttractionNode && node.sourceType === "manual";
-  const showEditButton = isAttractionNode && Boolean(tripId);
+  const showEditButton = isAttractionNode && Boolean(tripId) && !fromBookings;
   const showAttractionBookButton =
     isAttractionNode &&
     Boolean(tripId) &&
     isCatalogAttraction &&
     !isFreeAttraction &&
-    !isConfirmed;
+    !isConfirmed &&
+    !fromBookings;
   const showAttractionCancelButton =
     isAttractionNode &&
     Boolean(tripId) &&
     isCatalogAttraction &&
     !isFreeAttraction &&
-    isConfirmed;
+    isConfirmed &&
+    !fromBookings;
   const showManualConfirmButton =
     isAttractionNode &&
     Boolean(tripId) &&
     isManualAttraction &&
     !isFreeAttraction &&
-    !isConfirmed;
-  const showGenericBookButton = Boolean(onBook);
+    !isConfirmed &&
+    !fromBookings;
+  const showGenericBookButton = Boolean(onBook) && !fromBookings;
+  const showBookedButton = fromBookings && isConfirmed;
   const displayStatus =
     isAttractionNode && isFreeAttraction
       ? "Added"
@@ -1027,7 +1058,7 @@ function NodeDetail({
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 py-4 border-t border-border">
             <InfoBlock icon={Clock} label="Date" value={new Date(node.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} />
-            <InfoBlock icon={Clock} label="Time" value={node.time} />
+            <InfoBlock icon={Clock} label={isHotelNode ? "Check In Time" : "Time"} value={node.time} />
             {isAttractionNode && (
               <InfoBlock
                 icon={Clock}
@@ -1081,6 +1112,10 @@ function NodeDetail({
                         <span>{node.time}</span>
                       ) : key === "duration_minutes" ? (
                         <span>{node.duration || `${val}m`}</span>
+                      ) : key === "rate_per_night" ? (
+                        <span>${val as string}</span>
+                      ) : key === "datetime_check_in" || key === "datetime_check_out" ? (
+                        <span>{formatDateOnly(val as string)}</span>
                       ) : key === "datetime_departure" || key === "datetime_arrival" ? (
                         <div className="flex flex-col gap-1 mt-1">
                           <div className="flex items-center gap-2">
@@ -1102,7 +1137,7 @@ function NodeDetail({
           )}
         </div>
 
-        {(showGenericBookButton || showEditButton || showAttractionBookButton || showManualConfirmButton) && (
+        {(showGenericBookButton || showEditButton || showAttractionBookButton || showManualConfirmButton || showBookedButton) && (
           <div className="px-6 py-4 border-t border-border bg-secondary/30 flex items-center justify-between">
             <div>
               <span className="text-2xl font-mono tabular-nums font-medium">
@@ -1192,6 +1227,17 @@ function NodeDetail({
                       <Check className="w-4 h-4 mr-1.5" /> Book {cfg.label}
                     </>
                   )}
+                </Button>
+              )}
+              {showBookedButton && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  disabled
+                >
+                  <>
+                    <Check className="w-4 h-4 mr-1.5" /> Booked
+                  </>
                 </Button>
               )}
             </div>

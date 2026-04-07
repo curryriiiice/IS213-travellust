@@ -21,6 +21,7 @@ import {
   Calendar,
   Users,
   User,
+  RefreshCw,
 } from "lucide-react";
 
 type Filter = "all" | "flight" | "hotel" | "attraction";
@@ -31,6 +32,7 @@ const BookedTickets = () => {
   const [filter, setFilter] = useState<Filter>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [forceRefresh, setForceRefresh] = useState(false);
 
   // Get current user ID from localStorage or use a default for development
   // TODO: Integrate with proper authentication when available
@@ -59,6 +61,12 @@ const BookedTickets = () => {
     }
   };
 
+  // Helper to clear bookings cache
+  const clearBookingsCache = () => {
+    const cacheKey = `booked_tickets_${getCurrentUserId()}`;
+    sessionStorage.removeItem(cacheKey);
+  };
+
   // Safe fetch wrapper to suppress console errors during ticket resolution
   const safeFetch = async (
     fetchFn: (id: string) => Promise<any>,
@@ -75,7 +83,24 @@ const BookedTickets = () => {
   // Fetch and resolve booked tickets on component mount
   useEffect(() => {
     const fetchAndResolveBookings = async () => {
-      if (hasLoaded) return; // Only fetch once
+      // Skip cache if force refresh is requested
+      const cacheKey = `booked_tickets_${getCurrentUserId()}`;
+      const cachedData = sessionStorage.getItem(cacheKey);
+      const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+      if (!forceRefresh && cachedData) {
+        try {
+          const { data, timestamp } = JSON.parse(cachedData);
+          if (Date.now() - timestamp < CACHE_DURATION) {
+            setBookings(data);
+            setIsLoading(false);
+            setHasLoaded(true);
+            // Still fetch fresh data in background
+          }
+        } catch (e) {
+          console.error("Error parsing cache:", e);
+        }
+      }
 
       try {
         const userId = getCurrentUserId();
@@ -85,6 +110,7 @@ const BookedTickets = () => {
         if (bookedTickets.length === 0) {
           setIsLoading(false);
           setHasLoaded(true);
+          sessionStorage.removeItem(cacheKey); // Clear cache if no tickets
           return;
         }
 
@@ -145,7 +171,7 @@ const BookedTickets = () => {
                 totalPrice: cost || flight.cost,
                 passengerCount: memberCount,
                 bookedAt: bookingDateTime,
-                data: flight,
+                data: { ...flight, status: "confirmed" },
               };
             } else if (hotel) {
               const tripId = hotel.details?.trip_id;
@@ -160,7 +186,7 @@ const BookedTickets = () => {
                 totalPrice: cost || hotel.cost,
                 passengerCount: memberCount,
                 bookedAt: bookingDateTime,
-                data: hotel,
+                data: { ...hotel, status: "confirmed" },
               };
             } else if (attraction) {
               const tripId = attraction.details?.trip_id;
@@ -175,7 +201,7 @@ const BookedTickets = () => {
                 totalPrice: cost || attraction.cost,
                 passengerCount: memberCount,
                 bookedAt: bookingDateTime,
-                data: attraction,
+                data: { ...attraction, status: "confirmed" },
               };
             }
 
@@ -190,6 +216,16 @@ const BookedTickets = () => {
         );
 
         setBookings(validBookings);
+
+        // Cache the results for future instant loads
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({
+            data: validBookings,
+            timestamp: Date.now()
+          }));
+        } catch (e) {
+          console.error("Error caching bookings:", e);
+        }
       } catch (error) {
         console.error("Error fetching and resolving bookings:", error);
       } finally {
@@ -199,7 +235,7 @@ const BookedTickets = () => {
     };
 
     fetchAndResolveBookings();
-  }, [hasLoaded, setBookings]);
+  }, [hasLoaded, setBookings, forceRefresh]);
 
   const filtered =
     filter === "all"
@@ -234,14 +270,28 @@ const BookedTickets = () => {
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-3 mb-6">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <Ticket className="w-5 h-5 text-accent" />
-            <h1 className="text-xl font-semibold tracking-tight">Booked Tickets</h1>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex items-center gap-2">
+              <Ticket className="w-5 h-5 text-accent" />
+              <h1 className="text-xl font-semibold tracking-tight">Booked Tickets</h1>
+            </div>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              clearBookingsCache();
+              setForceRefresh(prev => !prev);
+            }}
+            title="Refresh bookings"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
         {/* Filter Tabs */}
@@ -314,7 +364,7 @@ const BookedTickets = () => {
                   className="bg-card border border-border rounded-sm p-4 hover:border-accent/30 transition-colors cursor-pointer"
                   onClick={() =>
                     navigate("/details", {
-                      state: { itemType: booking.itemType === "attraction" ? "node" : booking.itemType, data: booking.data, fromBookings: true },
+                      state: { itemType: "node", data: booking.data, tripId: booking.data.details?.trip_id, fromBookings: true },
                     })
                   }
                 >

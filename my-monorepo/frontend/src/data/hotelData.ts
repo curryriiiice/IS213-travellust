@@ -1,3 +1,6 @@
+import { parsePlanResponse } from "@/api/plan";
+import { handleApiError, retryWithBackoff } from "@/utils/apiErrorHandler";
+
 export interface HotelOffer {
   id: string;
   name: string;
@@ -24,6 +27,14 @@ export interface HotelSearchParams {
   checkIn: string;
   checkOut: string;
   guests: number;
+}
+
+// Plan service response interface for hotel search
+interface HotelPlanResponse {
+  search_results: {
+    properties: any[];
+  };
+  status: string;
 }
 
 export const hotelCities: Record<string, string> = {
@@ -186,67 +197,122 @@ export const mockHotelResults: HotelOffer[] = [
   },
 ];
 
+/**
+ * Search for hotels using the plan service gateway.
+ *
+ * This function routes search requests through the plan service for consistent
+ * error handling and future extensibility. The plan service validates requests
+ * and forwards to the hotel-management service.
+ *
+ * Features:
+ * - Automatic retry logic for transient errors (network issues, timeouts, server errors)
+ * - Standardized error handling with user-friendly messages
+ * - Support for optional search parameters (children, currency, language, sorting, rating)
+ * - Exponential backoff for retries (1s, 2s delays)
+ * - Filters out invalid results (price <= 0 or reviews <= 0)
+ *
+ * @param query - Search query (e.g., "Tokyo, Japan" or "Singapore")
+ * @param checkInDate - Check-in date in YYYY-MM-DD format
+ * @param checkOutDate - Check-out date in YYYY-MM-DD format
+ * @param adults - Number of adult passengers (default: 2)
+ * @param options - Optional search parameters
+ * @param options.children - Number of child passengers (default: 0)
+ * @param options.currency - Currency for pricing (default: "SGD")
+ * @param options.hl - Language code (default: "en")
+ * @param options.sort_by - Sort option: 3=price, 8=rating, 13=reviews (optional)
+ * @param options.rating - Minimum rating: 7=3.5+, 8=4.0+, 9=4.5+ (optional)
+ * @returns Promise<HotelOffer[]> - Array of hotel search results
+ * @throws {Error} - For validation, network, or server errors with user-friendly messages
+ *
+ * @example
+ * // Basic hotel search
+ * const hotels = await searchHotels("Tokyo, Japan", "2026-04-15", "2026-04-17", 2);
+ *
+ * @example
+ * // Hotel search with options
+ * const hotels = await searchHotels("Paris, France", "2026-04-15", "2026-04-17", 2, {
+ *   children: 1,
+ *   currency: "EUR",
+ *   sort_by: 8,
+ *   rating: 8
+ * });
+ */
 export async function searchHotels(
   query: string,
   checkInDate: string,
   checkOutDate: string,
-  adults: number = 2
-): Promise<HotelOffer[]> {
-  const payload = {
-    query,
-    check_in_date: checkInDate,
-    check_out_date: checkOutDate,
-    adults,
-  };
-
-  const response = await fetch("/api/hotel-management/search", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to search hotels");
+  adults: number = 2,
+  options?: {
+    children?: number;
+    currency?: string;
+    hl?: string;
+    sort_by?: number;
+    rating?: number;
   }
+): Promise<HotelOffer[]> {
+  return retryWithBackoff(async () => {
+    const payload = {
+      query,
+      check_in_date: checkInDate,
+      check_out_date: checkOutDate,
+      adults,
+      currency: options?.currency ?? "SGD",
+      children: options?.children ?? 0,
+      hl: options?.hl ?? "en",
+      ...(options?.sort_by !== undefined && { sort_by: options.sort_by }),
+      ...(options?.rating !== undefined && { rating: options.rating }),
+    };
 
-  const data = await response.json();
-  const properties = data?.data?.search_results?.properties || [];
+    const response = await fetch("/api/plan/hotels/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-  return properties.map((p: any) => {
-    let nearbyText = "";
-    if (p.nearby_places && p.nearby_places.length > 0) {
-      const place = p.nearby_places[0];
-      const transport = place.transportations?.[0];
-      if (transport) {
-        nearbyText = `${transport.duration} ${transport.type === 'Walking' ? 'walk' : transport.type.toLowerCase()} to ${place.name}`;
-      } else {
-        nearbyText = `Near ${place.name}`;
-      }
+    const json = await parsePlanResponse<HotelPlanResponse>(response);
+    if (!response.ok || !json.success) {
+      const error = await handleApiError({ response, message: json.error }, "hotel search");
+      throw new Error(error.message);
     }
 
-    return {
-      id: p.property_token || Math.random().toString(),
-      name: p.name || "",
-      chain: "",
-      city: query,
-      // Provide a mocked address if unavailable or try to get it from gps coordinates
-      address: p.address || "",
-      // Base 5. If overall_rating is out of 10, maybe we divide by 2? SerpApi usually returns out of 5 for Google Hotels.
-      starRating: Math.round(p.overall_rating || 3),
-      overall_rating: Math.round((p.overall_rating || 0) * 10) / 10,
-      reviews: p.reviews || 0,
-      price: p.rate_per_night?.extracted_lowest || p.total_rate?.extracted_lowest || 0,
-      currency: "SGD", // The payload asks for SGD or it usually is SGD
-      roomType: "Standard Room",
-      amenities: p.amenities || [],
-      thumbnail: p.images?.[0]?.original_image || p.images?.[0]?.thumbnail || "",
-      fallbackThumbnail: p.images?.[0]?.thumbnail || "",
-      freeCancellation: p.amenities?.some((a: string) => a.toLowerCase().includes("cancellation")) || false,
-      breakfastIncluded: p.amenities?.some((a: string) => a.toLowerCase().includes("breakfast")) || false,
-      distanceFromCenter: nearbyText,
-      locationRating: Math.round((p.location_rating || 0) * 10) / 10,
-    };
-  }).filter((h: HotelOffer) => h.price > 0 && h.reviews > 0);
+    const properties = json.data?.search_results?.properties || [];
+
+    return properties.map((p: any) => {
+      let nearbyText = "";
+      if (p.nearby_places && p.nearby_places.length > 0) {
+        const place = p.nearby_places[0];
+        const transport = place.transportations?.[0];
+        if (transport) {
+          nearbyText = `${transport.duration} ${transport.type === 'Walking' ? 'walk' : transport.type.toLowerCase()} to ${place.name}`;
+        } else {
+          nearbyText = `Near ${place.name}`;
+        }
+      }
+
+      return {
+        id: p.property_token || Math.random().toString(),
+        name: p.name || "",
+        chain: "",
+        city: query,
+        // Provide a mocked address if unavailable or try to get it from gps coordinates
+        address: p.address || "",
+        // Base 5. If overall_rating is out of 10, maybe we divide by 2? SerpApi usually returns out of 5 for Google Hotels.
+        starRating: Math.round(p.overall_rating || 3),
+        overall_rating: Math.round((p.overall_rating || 0) * 10) / 10,
+        reviews: p.reviews || 0,
+        price: p.rate_per_night?.extracted_lowest || p.total_rate?.extracted_lowest || 0,
+        currency: "SGD", // The payload asks for SGD or it usually is SGD
+        roomType: "Standard Room",
+        amenities: p.amenities || [],
+        thumbnail: p.images?.[0]?.original_image || p.images?.[0]?.thumbnail || "",
+        fallbackThumbnail: p.images?.[0]?.thumbnail || "",
+        freeCancellation: p.amenities?.some((a: string) => a.toLowerCase().includes("cancellation")) || false,
+        breakfastIncluded: p.amenities?.some((a: string) => a.toLowerCase().includes("breakfast")) || false,
+        distanceFromCenter: nearbyText,
+        locationRating: Math.round((p.location_rating || 0) * 10) / 10,
+      };
+    }).filter((h: HotelOffer) => h.price > 0 && h.reviews > 0);
+  }, 2, 1000); // maxRetries: 2, baseDelay: 1000ms
 }
