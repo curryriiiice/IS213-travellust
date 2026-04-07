@@ -195,13 +195,14 @@ const SearchResults = () => {
   const attractionResults = useMemo(() => {
     if (!hasSearched || activeTab !== "attractions") return [];
     let results = [...attractions];
+    if (aCity) results = results.filter((a) => a.city === aCity || a.address === aCity);
     if (aMaxPrice !== null) results = results.filter((a) => a.price <= aMaxPrice);
     results.sort((a, b) => {
       const cmp = a.price - b.price;
       return aSortAsc ? cmp : -cmp;
     });
     return results;
-  }, [hasSearched, activeTab, aSort, aSortAsc, aMaxPrice, attractions]);
+  }, [hasSearched, activeTab, aSort, aSortAsc, aMaxPrice, aCity, attractions]);
 
   const flightMinPrice = flightResults.length > 0 ? Math.min(...flightResults.map((f) => f.price)) : 0;
   const hotelMinPrice = hotelResults.length > 0 ? Math.min(...hotelResults.map((h) => h.price)) : 0;
@@ -258,7 +259,10 @@ const SearchResults = () => {
       setIsLoading(true);
       setError(null);
       try {
-        const results = await fetchCatalogAttractions();
+        const selectedLocation = getAttractionLocationFilter(aCity);
+        const results = selectedLocation
+          ? await fetchCatalogAttractionsByLocation(selectedLocation)
+          : await fetchCatalogAttractions();
         setAttractions(results);
       } catch (err) {
         console.error("Error loading attractions:", err);
