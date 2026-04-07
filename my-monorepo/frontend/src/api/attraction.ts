@@ -28,7 +28,7 @@ interface RawAttraction {
  * Raw response wrapper from attractions service
  */
 interface AttractionsResponse {
-  data?: RawAttraction[];
+  data?: RawAttraction | RawAttraction[];
   count?: number;
   error?: string;
 }
@@ -80,7 +80,13 @@ function parseCost(costValue: number | string | undefined): number {
  * Map raw attraction data to ItineraryNode format
  */
 function mapAttractionToNode(raw: RawAttraction, tripCurrency: string): ItineraryNode {
-  const { date, time } = extractDateTimeParts(raw.visit_time, raw.created_at);
+  if (!raw) {
+    throw new Error("Cannot map null attraction data");
+  }
+
+  // Handle missing visit_time by using created_at as fallback
+  const visitTime = raw.visit_time || raw.created_at;
+  const { date, time } = extractDateTimeParts(visitTime, raw.created_at);
 
   // Format duration (e.g., "2h 30m")
   const duration = formatDuration(raw.duration_minutes ?? 0);
@@ -118,6 +124,7 @@ function mapAttractionToNode(raw: RawAttraction, tripCurrency: string): Itinerar
       visit_time: raw.visit_time ?? "",
       duration_minutes: String(raw.duration_minutes ?? 0),
       location: raw.location,
+      trip_id: raw.trip_id || "",
     },
   };
 }
@@ -156,24 +163,23 @@ export async function fetchAttractionsByTripId(tripId: string, tripCurrency: str
     const response = await fetch(`/api/attractions-service/trips/${tripId}/attractions`);
 
     if (!response.ok) {
-      console.warn(`Failed to fetch attractions for trip ${tripId}: ${response.status}`);
       return [];
     }
 
     const json: AttractionsResponse = await response.json();
 
     if (!json.data) {
-      console.warn(`No attractions data for trip ${tripId}`);
       return [];
     }
 
-    console.log(`Fetched ${json.data.length} attractions for trip ${tripId}`);
+    // Handle both array and single object responses
+    const attractionData = Array.isArray(json.data) ? json.data : [json.data];
+
     // Filter out deleted attractions and map to ItineraryNode
-    return json.data
-      .filter((attraction) => !attraction.deleted)
+    return attractionData
+      .filter((attraction): attraction is RawAttraction => !attraction.deleted)
       .map((raw) => mapAttractionToNode(raw, tripCurrency));
   } catch (error) {
-    console.error(`Error fetching attractions for trip ${tripId}:`, error);
     return [];
   }
 }
@@ -195,7 +201,10 @@ async function fetchCatalogAttractionsFromPath(path: string): Promise<Attraction
     return [];
   }
 
-  return json.data.map(mapCatalogAttractionToOffer);
+  // Handle both array and single object responses
+  const attractionData = Array.isArray(json.data) ? json.data : [json.data];
+
+  return attractionData.map(mapCatalogAttractionToOffer);
 }
 
 export async function searchCatalogAttractions(query: string): Promise<AttractionOffer[]> {
@@ -213,7 +222,14 @@ export async function searchCatalogAttractions(query: string): Promise<Attractio
   }
 
   const json: AttractionsResponse = await response.json();
-  return (json.data ?? []).map(mapCatalogAttractionToOffer);
+
+  if (!json.data) {
+    return [];
+  }
+
+  // Handle both array and single object responses
+  const attractionData = Array.isArray(json.data) ? json.data : [json.data];
+  return attractionData.map(mapCatalogAttractionToOffer);
 }
 
 export async function fetchCatalogAttractions(): Promise<AttractionOffer[]> {
@@ -235,4 +251,49 @@ export async function fetchCatalogAttractionLocations(): Promise<string[]> {
 
   const json: { data?: string[] } = await response.json();
   return (json.data ?? []).map((location) => location.trim()).filter(Boolean);
+}
+
+/**
+ * Fetch attraction details by ID from attractions service
+ * @param attractionId - The attraction UUID
+ * @param tripCurrency - The trip's currency (defaults to "SGD" if not provided)
+ * @returns The mapped ItineraryNode or null if fetch fails
+ */
+export async function fetchAttractionById(attractionId: string, tripCurrency: string = "SGD"): Promise<ItineraryNode | null> {
+  try {
+    const url = `/api/attractions-service/attractions/${attractionId}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const json: AttractionsResponse = await response.json();
+
+    // Handle both single object and array responses
+    let attractionData: RawAttraction | null = null;
+
+    if (!json.data) {
+      return null;
+    }
+
+    // Check if data is an array or single object
+    if (Array.isArray(json.data)) {
+      if (json.data.length === 0) {
+        return null;
+      }
+      attractionData = json.data[0];
+    } else {
+      // Single object
+      attractionData = json.data as RawAttraction;
+    }
+
+    if (!attractionData) {
+      return null;
+    }
+
+    return mapAttractionToNode(attractionData, tripCurrency);
+  } catch (error) {
+    return null;
+  }
 }

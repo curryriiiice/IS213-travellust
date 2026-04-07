@@ -30,7 +30,7 @@ function arrivalISO(departureISO: string, durationMinutes: number): string {
   return new Date(ms).toISOString().slice(0, 19);
 }
 
-async function parsePlanResponse<T>(res: Response): Promise<PlanApiResponse<T>> {
+export async function parsePlanResponse<T>(res: Response): Promise<PlanApiResponse<T>> {
   const raw = await res.text();
 
   if (!raw.trim()) {
@@ -134,7 +134,7 @@ export async function saveHotel(
           : "Failed to save hotel")
     );
   }
-  return json.data?.hotel ?? json.data;
+  return json.data;
 }
 
 export async function saveAttraction(
