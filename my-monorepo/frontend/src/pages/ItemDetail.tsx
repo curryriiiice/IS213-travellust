@@ -184,14 +184,19 @@ const ItemDetail = () => {
   const isNodeHotel =
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "hotel";
 
-  const onBook = state.fromBookings
-    ? undefined
-    : isNodeFlight
+  const onBook =
+    // For node-type hotel: always show book button (even from bookings)
+    isNodeHotel
     ? handleBookFlight
+    // For node-type flight: show book button (hide if from bookings)
+    : isNodeFlight
+    ? state.fromBookings ? undefined : handleBookFlight
+    // For attraction: add to trip
     : state.itemType === "attraction"
     ? handleAddAttractionToTrip
+    // For generic flight/hotel: show book button (hide if from bookings)
     : state.itemType === "flight" || state.itemType === "hotel"
-    ? handleBookGeneric
+    ? state.fromBookings ? undefined : handleBookGeneric
     : undefined;
 
   // Member IDs for modal
@@ -1102,9 +1107,9 @@ function NodeDetail({
                   variant="accent"
                   size="lg"
                   onClick={onBook}
-                  disabled={isConfirmed && isFlightNode}
+                  disabled={isConfirmed && (isFlightNode || isHotelNode)}
                 >
-                  {isConfirmed && isFlightNode ? (
+                  {isConfirmed && (isFlightNode || isHotelNode) ? (
                     <>
                       <Check className="w-4 h-4 mr-1.5" /> Booked
                     </>

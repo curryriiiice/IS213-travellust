@@ -101,6 +101,9 @@ class SerpApiClient:
                 print(f"⚠️  Parsing error for journey: {e}")
                 continue
 
+        # Filter out flights with invalid pricing ($0 or missing)
+        flights = [f for f in flights if f.get('price_sgd', 0) > 0]
+
         # Sort by price (cheapest first)
         flights.sort(key=lambda f: f.get('price_sgd', float('inf')))
         return flights
