@@ -35,6 +35,10 @@ export default defineConfig(() => ({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/trips-atomic/, "/api"),
       },
+      "/api/plan": {
+        target: "http://localhost:5011",
+        changeOrigin: true,
+      },
       "/api": {
         target: "http://localhost:5005",
         changeOrigin: true,
