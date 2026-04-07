@@ -1,20 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
 import { LedgerPane } from "./LedgerPane";
 import { BudgetBar } from "./BudgetBar";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
 import type { Trip, ItineraryNode } from "@/types/trip";
-import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin, Loader2 } from "lucide-react";
+import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { fetchFlightById } from "@/api/flight";
 import { fetchHotelById } from "@/api/hotel";
@@ -23,6 +16,9 @@ import { getUserBookedTickets } from "@/api/booking";
 import {
   saveCatalogAttraction,
   saveManualAttraction,
+  deleteFlight,
+  deleteHotel,
+  deletePlannedAttraction,
   type AttractionPlanInput,
 } from "@/api/plan";
 import { useCollabSocket } from "@/hooks/useCollabSocket";
@@ -37,7 +33,6 @@ interface TripCommandCenterProps {
 const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
 export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCenterProps) {
-  const navigate = useNavigate();
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
   const [enrichedNodes, setEnrichedNodes] = useState<ItineraryNode[]>([]);
@@ -81,6 +76,30 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
   );
 
   const { activeUsers, activityLog } = useCollabSocket(trip.id, CURRENT_USER_ID, handleTripUpdate);
+
+  const handleDeleteNode = useCallback(
+    async (node: ItineraryNode) => {
+      try {
+        if (node.type === "flight") {
+          await deleteFlight(trip.id, CURRENT_USER_ID, node.id);
+        } else if (node.type === "hotel") {
+          await deleteHotel(trip.id, CURRENT_USER_ID, node.id);
+        } else if (node.type === "attraction") {
+          await deletePlannedAttraction(trip.id, CURRENT_USER_ID, node.id);
+        }
+        // Optimistic removal — collab socket will also fire for other users
+        setEnrichedNodes((prev) => prev.filter((n) => n.id !== node.id));
+        toast({ title: "Removed", description: `${node.title} removed from trip.` });
+      } catch (err) {
+        toast({
+          title: "Failed to remove",
+          description: err instanceof Error ? err.message : "Unknown error",
+          variant: "destructive",
+        });
+      }
+    },
+    [trip.id]
+  );
 
   // Add node form state
   const [nodeType, setNodeType] = useState<"flight" | "hotel" | "attraction">("flight");
@@ -337,7 +356,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
             variant="ghost"
             size="sm"
             className="h-7 text-xs gap-1.5"
-            onClick={() => setAddNodeOpen(true)}
+            onClick={() => { setAddNodeOpen(true); setSelectedNode(null); }}
           >
             <Plus className="w-3.5 h-3.5" />
             Add
@@ -366,7 +385,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={() => setAddNodeOpen(true)}
+              onClick={() => { setAddNodeOpen(true); setSelectedNode(null); }}
             >
               <Plus className="w-3.5 h-3.5" />
             </Button>
@@ -382,7 +401,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                   variant="outline"
                   size="sm"
                   className="text-xs"
-                  onClick={() => setAddNodeOpen(true)}
+                  onClick={() => { setAddNodeOpen(true); setSelectedNode(null); }}
                 >
                   Add your first item
                 </Button>
@@ -404,17 +423,8 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                     key={node.id}
                     node={node}
                     isSelected={selectedNode?.id === node.id}
-                    onClick={(n) => {
-                      setSelectedNode(n);
-                      navigate("/details", {
-                        state: {
-                          itemType: "node",
-                          data: n,
-                          tripId: trip.id,
-                          memberIds: trip.member_ids ?? [],
-                        },
-                      });
-                    }}
+                    onClick={(n) => setSelectedNode(n)}
+                    onDelete={node.status !== "confirmed" ? handleDeleteNode : undefined}
                     isFirst={false}
                   />
                 ))}
@@ -428,9 +438,228 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
           })()}
         </div>
 
-        {/* Center: Detail view */}
-        <div className="flex-1 pane-border flex flex-col">
-          <DetailPane node={selectedNode} />
+        {/* Center: Detail view / Add form */}
+        <div className="flex-1 pane-border flex flex-col overflow-hidden">
+          {addNodeOpen ? (
+            <>
+              <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                  Add to Itinerary
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => { setAddNodeOpen(false); resetForm(); }}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {/* Type selector */}
+                <div className="flex gap-2">
+                  {(["flight", "hotel", "attraction"] as const).map((type) => {
+                    const cfg = typeConfig[type];
+                    const Icon = cfg.icon;
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => setNodeType(type)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-sm text-xs font-mono uppercase tracking-wider transition-colors ${
+                          nodeType === type ? cfg.color : "bg-secondary text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        {cfg.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                      Title
+                    </label>
+                    <input
+                      className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                      placeholder={nodeType === "flight" ? "SFO → NRT" : nodeType === "hotel" ? "Hotel name" : "Attraction name"}
+                      value={nodeTitle}
+                      onChange={(e) => setNodeTitle(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                      Subtitle
+                    </label>
+                    <input
+                      className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                      placeholder={nodeType === "flight" ? "Japan Airlines JL001" : nodeType === "hotel" ? "Shibuya, Tokyo" : "Guided tour"}
+                      value={nodeSubtitle}
+                      onChange={(e) => setNodeSubtitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                        Date
+                      </label>
+                      <input
+                        type="date"
+                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                        value={nodeDate}
+                        onChange={(e) => setNodeDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                        Time
+                      </label>
+                      <input
+                        type="time"
+                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                        value={nodeTime}
+                        onChange={(e) => setNodeTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                        Cost ({trip.currency})
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                        placeholder="0"
+                        value={nodeCost}
+                        onChange={(e) => setNodeCost(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                        Duration (min)
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                        placeholder="120"
+                        value={nodeDuration}
+                        onChange={(e) => setNodeDuration(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {nodeType === "attraction" && (
+                    <>
+                      <div>
+                        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                          Google Maps Link
+                        </label>
+                        <Input
+                          className="h-9 bg-secondary border-border text-sm"
+                          placeholder="https://maps.google.com/..."
+                          value={nodeGmapsLink}
+                          onChange={(e) => setNodeGmapsLink(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block">
+                            Catalog Recommendation
+                          </label>
+                          {isSearchingCatalog && (
+                            <span className="text-[10px] font-mono text-muted-foreground">Searching...</span>
+                          )}
+                        </div>
+                        {catalogRecommendations.length > 0 ? (
+                          <div className="space-y-2 rounded-sm border border-border p-2">
+                            {catalogRecommendations.map((recommendation) => {
+                              const isSelected = selectedCatalogMatch?.id === recommendation.id;
+                              return (
+                                <button
+                                  key={recommendation.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCatalogMatch(recommendation);
+                                    setNodeTitle(recommendation.name);
+                                    setNodeSubtitle(recommendation.address);
+                                    setNodeGmapsLink(recommendation.gmapsLink ?? "");
+                                    setNodeDuration(String(recommendation.durationMinutes ?? 120));
+                                    setNodeCost(String(recommendation.price ?? 0));
+                                  }}
+                                  className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
+                                    isSelected
+                                      ? "border-node-attraction bg-node-attraction/10"
+                                      : "border-border bg-secondary/30 hover:bg-secondary/50"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium truncate">{recommendation.name}</p>
+                                      <p className="text-[11px] text-muted-foreground truncate">{recommendation.address}</p>
+                                    </div>
+                                    <div className="shrink-0 text-right">
+                                      <p className="text-[10px] font-mono text-muted-foreground">
+                                        {recommendation.price === 0 ? "Free" : `$${recommendation.price}`}
+                                      </p>
+                                      <p className="text-[10px] font-mono text-muted-foreground">
+                                        {recommendation.durationMinutes}m
+                                      </p>
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="rounded-sm border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground">
+                            {nodeTitle.trim().length < 3
+                              ? "Start typing an attraction name to check the catalog first."
+                              : "No close catalog match found. You can still add this attraction manually."}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="px-6 py-3 border-t border-border shrink-0 flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => { setAddNodeOpen(false); resetForm(); }}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={handleAddNode}
+                  disabled={!nodeTitle || !nodeDate}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Add {typeConfig[nodeType].label}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <DetailPane
+              node={selectedNode}
+              trip={trip}
+              onDelete={selectedNode?.status !== "confirmed" ? handleDeleteNode : undefined}
+              onNodeBooked={(nodeId) =>
+                setEnrichedNodes((prev) =>
+                  prev.map((n) => (n.id === nodeId ? { ...n, status: "confirmed" as const } : n))
+                )
+              }
+              onNodeRemoved={(nodeId) => {
+                setEnrichedNodes((prev) => prev.filter((n) => n.id !== nodeId));
+                setSelectedNode(null);
+              }}
+              onNodeUpdated={(updated) =>
+                setEnrichedNodes((prev) =>
+                  prev.map((n) => (n.id === updated.id ? updated : n))
+                )
+              }
+            />
+          )}
         </div>
 
         {/* Right: Ledger & Social */}
@@ -439,198 +668,6 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
         </div>
       </div>
 
-      {/* Add Node Dialog */}
-      <Dialog open={addNodeOpen} onOpenChange={setAddNodeOpen}>
-        <DialogContent className="sm:max-w-md bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-medium tracking-tight">Add to Itinerary</DialogTitle>
-          </DialogHeader>
-
-          {/* Type selector */}
-          <div className="flex gap-2">
-            {(["flight", "hotel", "attraction"] as const).map((type) => {
-              const cfg = typeConfig[type];
-              const Icon = cfg.icon;
-              return (
-                <button
-                  key={type}
-                  onClick={() => setNodeType(type)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-sm text-xs font-mono uppercase tracking-wider transition-colors ${
-                    nodeType === type ? cfg.color : "bg-secondary text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {cfg.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="space-y-3 mt-2">
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                Title
-              </label>
-              <input
-                className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder={nodeType === "flight" ? "SFO → NRT" : nodeType === "hotel" ? "Hotel name" : "Attraction name"}
-                value={nodeTitle}
-                onChange={(e) => setNodeTitle(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                Subtitle
-              </label>
-              <input
-                className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder={nodeType === "flight" ? "Japan Airlines JL001" : nodeType === "hotel" ? "Shibuya, Tokyo" : "Guided tour"}
-                value={nodeSubtitle}
-                onChange={(e) => setNodeSubtitle(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                  value={nodeDate}
-                  onChange={(e) => setNodeDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Time
-                </label>
-                <input
-                  type="time"
-                  className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                  value={nodeTime}
-                  onChange={(e) => setNodeTime(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Cost ({trip.currency})
-                </label>
-                <input
-                  type="number"
-                  className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                  placeholder="0"
-                  value={nodeCost}
-                  onChange={(e) => setNodeCost(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Duration
-                </label>
-              <input
-                type="number"
-                className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder="120"
-                value={nodeDuration}
-                onChange={(e) => setNodeDuration(e.target.value)}
-              />
-            </div>
-            </div>
-            {nodeType === "attraction" && (
-              <>
-                <div>
-                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                    Google Maps Link
-                  </label>
-                  <Input
-                    className="h-9 bg-secondary border-border text-sm"
-                    placeholder="https://maps.google.com/..."
-                    value={nodeGmapsLink}
-                    onChange={(e) => setNodeGmapsLink(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block">
-                      Catalog Recommendation
-                    </label>
-                    {isSearchingCatalog && (
-                      <span className="text-[10px] font-mono text-muted-foreground">Searching...</span>
-                    )}
-                  </div>
-
-                  {catalogRecommendations.length > 0 ? (
-                    <div className="space-y-2 rounded-sm border border-border p-2">
-                      {catalogRecommendations.map((recommendation) => {
-                        const isSelected = selectedCatalogMatch?.id === recommendation.id;
-                        return (
-                          <button
-                            key={recommendation.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCatalogMatch(recommendation);
-                              setNodeTitle(recommendation.name);
-                              setNodeSubtitle(recommendation.address);
-                              setNodeGmapsLink(recommendation.gmapsLink ?? "");
-                              setNodeDuration(String(recommendation.durationMinutes ?? 120));
-                              setNodeCost(String(recommendation.price ?? 0));
-                            }}
-                            className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
-                              isSelected
-                                ? "border-node-attraction bg-node-attraction/10"
-                                : "border-border bg-secondary/30 hover:bg-secondary/50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{recommendation.name}</p>
-                                <p className="text-[11px] text-muted-foreground truncate">{recommendation.address}</p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <p className="text-[10px] font-mono text-muted-foreground">
-                                  {recommendation.price === 0 ? "Free" : `$${recommendation.price}`}
-                                </p>
-                                <p className="text-[10px] font-mono text-muted-foreground">
-                                  {recommendation.durationMinutes}m
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-sm border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground">
-                      {nodeTitle.trim().length < 3
-                        ? "Start typing an attraction name to check the catalog first."
-                        : "No close catalog match found. You can still add this attraction manually."}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="ghost" size="sm" onClick={() => { setAddNodeOpen(false); resetForm(); }}>
-              Cancel
-            </Button>
-            <Button
-              variant="accent"
-              size="sm"
-              onClick={handleAddNode}
-              disabled={!nodeTitle || !nodeDate}
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Add {typeConfig[nodeType].label}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

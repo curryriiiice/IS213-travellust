@@ -23,12 +23,13 @@ import {
   Check,
   X,
   User,
+  Loader2,
 } from "lucide-react";
 import { searchFlights, airports, type FlightOffer } from "@/data/flightData";
 import { searchHotels, hotelCities, type HotelOffer } from "@/data/hotelData";
 import type { AttractionOffer } from "@/data/attractionData";
 import { mockTrips } from "@/data/mockData";
-import { getUserTrips } from "@/api/trip";
+import { getUserTrips, createTrip } from "@/api/trip";
 import {
   fetchCatalogAttractions,
   fetchCatalogAttractionLocations,
@@ -102,6 +103,13 @@ const SearchResults = () => {
   const [userTrips, setUserTrips] = useState<Trip[]>([]);
   const [isLoadingTrips, setIsLoadingTrips] = useState(false);
   const [fetchTripsError, setFetchTripsError] = useState<string | null>(null);
+  const [showNewTripForm, setShowNewTripForm] = useState(false);
+  const [newTripName, setNewTripName] = useState("");
+  const [newTripDestination, setNewTripDestination] = useState("");
+  const [newTripStartDate, setNewTripStartDate] = useState("");
+  const [newTripEndDate, setNewTripEndDate] = useState("");
+  const [newTripBudget, setNewTripBudget] = useState("");
+  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
 
   const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
@@ -187,13 +195,14 @@ const SearchResults = () => {
   const attractionResults = useMemo(() => {
     if (!hasSearched || activeTab !== "attractions") return [];
     let results = [...attractions];
+    if (aCity) results = results.filter((a) => a.city === aCity || a.address === aCity);
     if (aMaxPrice !== null) results = results.filter((a) => a.price <= aMaxPrice);
     results.sort((a, b) => {
       const cmp = a.price - b.price;
       return aSortAsc ? cmp : -cmp;
     });
     return results;
-  }, [hasSearched, activeTab, aSort, aSortAsc, aMaxPrice, attractions]);
+  }, [hasSearched, activeTab, aSort, aSortAsc, aMaxPrice, aCity, attractions]);
 
   const flightMinPrice = flightResults.length > 0 ? Math.min(...flightResults.map((f) => f.price)) : 0;
   const hotelMinPrice = hotelResults.length > 0 ? Math.min(...hotelResults.map((h) => h.price)) : 0;
@@ -250,7 +259,10 @@ const SearchResults = () => {
       setIsLoading(true);
       setError(null);
       try {
-        const results = await fetchCatalogAttractions();
+        const selectedLocation = getAttractionLocationFilter(aCity);
+        const results = selectedLocation
+          ? await fetchCatalogAttractionsByLocation(selectedLocation)
+          : await fetchCatalogAttractions();
         setAttractions(results);
       } catch (err) {
         console.error("Error loading attractions:", err);
@@ -293,6 +305,37 @@ const SearchResults = () => {
     }
 
     setTripPickerItem(null);
+  };
+
+  const handleCreateAndAddToTrip = async () => {
+    if (!newTripName || !newTripDestination || !newTripStartDate) return;
+    setIsCreatingTrip(true);
+    try {
+      const newTrip = await createTrip(CURRENT_USER_ID, {
+        name: newTripName,
+        destination: newTripDestination,
+        startDate: newTripStartDate,
+        endDate: newTripEndDate || newTripStartDate,
+        budget: Number(newTripBudget) || 0,
+        currency: "SGD",
+      });
+      setUserTrips((prev) => [newTrip, ...prev]);
+      await handleAddToTrip(newTrip);
+      setShowNewTripForm(false);
+      setNewTripName("");
+      setNewTripDestination("");
+      setNewTripStartDate("");
+      setNewTripEndDate("");
+      setNewTripBudget("");
+    } catch (err) {
+      toast({
+        title: "Failed to create trip",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingTrip(false);
+    }
   };
 
   return (
@@ -620,7 +663,7 @@ const SearchResults = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center"
-            onClick={() => setTripPickerItem(null)}
+            onClick={() => { setTripPickerItem(null); setShowNewTripForm(false); }}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -641,7 +684,7 @@ const SearchResults = () => {
                       : `${tripPickerItem.data.name} · $${tripPickerItem.data.price}`}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setTripPickerItem(null)}>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setTripPickerItem(null); setShowNewTripForm(false); }}>
                   <X className="w-3.5 h-3.5" />
                 </Button>
               </div>
@@ -664,35 +707,104 @@ const SearchResults = () => {
                         {fetchTripsError}
                       </div>
                     )}
-                    {userTrips.length === 0 ? (
-                      <div className="text-center py-6 border border-dashed border-border rounded-sm">
-                        <p className="text-xs text-muted-foreground">No trips found</p>
-                        <Button variant="link" size="sm" className="text-[10px] h-auto p-0 mt-1" onClick={() => navigate("/")}>
-                          Create a new trip
-                        </Button>
+                    {userTrips.length === 0 && !showNewTripForm && (
+                      <div className="text-center py-4 border border-dashed border-border rounded-sm">
+                        <p className="text-xs text-muted-foreground">No trips yet</p>
                       </div>
-                    ) : (
-                      userTrips.map((trip) => (
-                        <button
-                          key={trip.id}
-                          onClick={() => handleAddToTrip(trip)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm border border-border bg-secondary/30 hover:bg-secondary transition-colors text-left"
-                        >
-                          <div className="w-8 h-8 rounded-sm bg-accent/10 flex items-center justify-center shrink-0">
-                            <MapPin className="w-3.5 h-3.5 text-accent" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-xs font-medium block truncate">{trip.name}</span>
-                            <span className="text-[10px] text-muted-foreground font-mono">{trip.destination}</span>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <span className="text-[10px] text-muted-foreground font-mono">{trip.nodes.length} items</span>
-                          </div>
-                          <Plus className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        </button>
-                      ))
                     )}
+                    {userTrips.map((trip) => (
+                      <button
+                        key={trip.id}
+                        onClick={() => handleAddToTrip(trip)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm border border-border bg-secondary/30 hover:bg-secondary transition-colors text-left"
+                      >
+                        <div className="w-8 h-8 rounded-sm bg-accent/10 flex items-center justify-center shrink-0">
+                          <MapPin className="w-3.5 h-3.5 text-accent" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium block truncate">{trip.name}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">{trip.destination}</span>
+                        </div>
+                        <Plus className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      </button>
+                    ))}
                   </>
+                )}
+              </div>
+
+              {/* New Trip section */}
+              <div className="border-t border-border">
+                {!showNewTripForm ? (
+                  <button
+                    onClick={() => setShowNewTripForm(true)}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    New Trip
+                  </button>
+                ) : (
+                  <div className="p-3 space-y-2.5">
+                    <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">New Trip</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="col-span-2">
+                        <input
+                          className="w-full h-8 bg-secondary border border-border rounded-sm px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                          placeholder="Trip name"
+                          value={newTripName}
+                          onChange={(e) => setNewTripName(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <input
+                          className="w-full h-8 bg-secondary border border-border rounded-sm px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                          placeholder="Destination"
+                          value={newTripDestination}
+                          onChange={(e) => setNewTripDestination(e.target.value)}
+                        />
+                      </div>
+                      <input
+                        type="date"
+                        className="h-8 bg-secondary border border-border rounded-sm px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                        placeholder="Start date"
+                        value={newTripStartDate}
+                        onChange={(e) => setNewTripStartDate(e.target.value)}
+                      />
+                      <input
+                        type="date"
+                        className="h-8 bg-secondary border border-border rounded-sm px-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-accent"
+                        placeholder="End date"
+                        value={newTripEndDate}
+                        onChange={(e) => setNewTripEndDate(e.target.value)}
+                      />
+                      <input
+                        type="number"
+                        className="h-8 bg-secondary border border-border rounded-sm px-2.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent col-span-2"
+                        placeholder="Budget (SGD)"
+                        value={newTripBudget}
+                        onChange={(e) => setNewTripBudget(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 h-7 text-xs"
+                        onClick={() => { setShowNewTripForm(false); setNewTripName(""); setNewTripDestination(""); setNewTripStartDate(""); setNewTripEndDate(""); setNewTripBudget(""); }}
+                        disabled={isCreatingTrip}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="accent"
+                        size="sm"
+                        className="flex-1 h-7 text-xs"
+                        onClick={handleCreateAndAddToTrip}
+                        disabled={!newTripName || !newTripDestination || !newTripStartDate || isCreatingTrip}
+                      >
+                        {isCreatingTrip ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Creating…</> : "Create & Add"}
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             </motion.div>

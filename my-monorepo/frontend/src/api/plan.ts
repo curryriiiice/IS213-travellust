@@ -134,7 +134,7 @@ export async function saveHotel(
           : "Failed to save hotel")
     );
   }
-  return json.data;
+  return (json.data as { hotel?: { hotel_id: string } })?.hotel ?? json.data;
 }
 
 export async function saveAttraction(
@@ -261,6 +261,60 @@ export async function updatePlannedAttraction(
     );
   }
   return json.data;
+}
+
+export async function deleteFlight(
+  tripId: string,
+  userId: string,
+  flightId: string
+): Promise<{ message?: string }> {
+  const res = await fetch("/api/plan/flights/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      trip_id: tripId,
+      user_id: userId,
+      flight_id: flightId,
+    }),
+  });
+
+  const json = await parsePlanResponse<{ message?: string }>(res);
+  if (!res.ok || !json.success) {
+    throw new Error(
+      json.error ??
+        (Object.keys(json).length === 0
+          ? `Plan service returned an empty response (${res.status}).`
+          : "Failed to delete flight")
+    );
+  }
+  return json.data ?? {};
+}
+
+export async function deleteHotel(
+  tripId: string,
+  userId: string,
+  hotelId: string
+): Promise<{ message?: string }> {
+  const res = await fetch("/api/plan/hotels/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      trip_id: tripId,
+      user_id: userId,
+      hotel_ids: [hotelId],
+    }),
+  });
+
+  const json = await parsePlanResponse<{ message?: string }>(res);
+  if (!res.ok || !json.success) {
+    throw new Error(
+      json.error ??
+        (Object.keys(json).length === 0
+          ? `Plan service returned an empty response (${res.status}).`
+          : "Failed to delete hotel")
+    );
+  }
+  return json.data ?? {};
 }
 
 export async function deletePlannedAttraction(

@@ -90,6 +90,7 @@ const Index = () => {
         name: tripName,
         destination: tripDestination,
         startDate: format(tripStartDate, "yyyy-MM-dd"),
+        endDate: format(tripEndDate, "yyyy-MM-dd"),
         budget: Number(tripBudget) || 0,
         currency: tripCurrency,
       });
