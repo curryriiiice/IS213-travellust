@@ -105,6 +105,7 @@ function mapHotelToNode(raw: RawHotel, tripCurrency: string): ItineraryNode {
       datetime_check_out: raw.datetime_check_out,
       nights: nights.toString(),
       rate_per_night: ratePerNight.toString(),
+      trip_id: raw.trip_id || "",
     },
   };
 }
@@ -120,21 +121,17 @@ export async function fetchHotelById(hotelId: string, tripCurrency: string = "SG
     const response = await fetch(`/api/hotel-management/hotels/${hotelId}`);
 
     if (!response.ok) {
-      console.warn(`Failed to fetch hotel ${hotelId}: ${response.status}`);
       return null;
     }
 
     const json: HotelResponse = await response.json();
 
     if (!json.data?.hotel) {
-      console.warn(`Invalid hotel response for ${hotelId}`);
       return null;
     }
 
-    console.log("Fetched hotel data:", json.data.hotel);
     return mapHotelToNode(json.data.hotel, tripCurrency);
   } catch (error) {
-    console.error(`Error fetching hotel ${hotelId}:`, error);
     return null;
   }
 }

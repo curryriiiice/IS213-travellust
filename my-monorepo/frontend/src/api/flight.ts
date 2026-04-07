@@ -90,7 +90,6 @@ function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode {
   // Extract date (YYYY-MM-DD) and time (HH:mm)
   const date = departureDate.toISOString().split("T")[0];
   const time = departureDate.toTimeString().slice(0, 5);
-  const arrivalTime = arrivalDate.toTimeString().slice(0, 5);
 
   // Calculate duration in minutes
   const durationMs = arrivalDate.getTime() - departureDate.getTime();
@@ -133,6 +132,7 @@ function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode {
       datetime_arrival: raw.datetime_arrival,
       origin: raw.origin || "",
       destination: raw.destination || "",
+      trip_id: raw.trip_id || "",
       // Store raw costs for reference
       price_sgd: parseCost(raw.price_sgd).toString(),
       price_usd: parseCost(raw.price_usd).toString(),
@@ -151,21 +151,17 @@ export async function fetchFlightById(flightId: string, tripCurrency: string = "
     const response = await fetch(`/api/flights/${flightId}`);
 
     if (!response.ok) {
-      console.warn(`Failed to fetch flight ${flightId}: ${response.status}`);
       return null;
     }
 
     const json: FlightResponse = await response.json();
 
     if (!json.success || !json.data) {
-      console.warn(`Invalid flight response for ${flightId}`);
       return null;
     }
 
-    console.log("Fetched flight data:", json.data);
     return mapFlightToNode(json.data, tripCurrency);
   } catch (error) {
-    console.error(`Error fetching flight ${flightId}:`, error);
     return null;
   }
 }

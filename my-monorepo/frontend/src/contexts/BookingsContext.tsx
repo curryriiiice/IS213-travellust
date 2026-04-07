@@ -17,6 +17,7 @@ export interface BookingRecord {
 interface BookingsContextType {
   bookings: BookingRecord[];
   addBooking: (booking: BookingRecord) => void;
+  setBookings: (bookings: BookingRecord[]) => void;
 }
 
 const BookingsContext = createContext<BookingsContextType | undefined>(undefined);
@@ -29,7 +30,7 @@ export const BookingsProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <BookingsContext.Provider value={{ bookings, addBooking }}>
+    <BookingsContext.Provider value={{ bookings, addBooking, setBookings }}>
       {children}
     </BookingsContext.Provider>
   );

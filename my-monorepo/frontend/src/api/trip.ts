@@ -97,3 +97,28 @@ export async function getUserTrips(userId: string): Promise<Trip[]> {
 
   return rawTrips.map(mapRawTrip);
 }
+
+/** Fetch a single trip by ID from the trips_atomic service. */
+export async function fetchTripById(tripId: string): Promise<Trip | null> {
+  try {
+    const response = await fetch(`/api/trips-atomic/trips/${tripId}`);
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch trip ${tripId}: ${response.status}`);
+      return null;
+    }
+
+    const json = await response.json();
+    const raw: RawTrip = json.data;
+
+    if (!raw) {
+      console.warn(`Trip ${tripId} not found`);
+      return null;
+    }
+
+    return mapRawTrip(raw);
+  } catch (error) {
+    console.error(`Error fetching trip ${tripId}:`, error);
+    return null;
+  }
+}
