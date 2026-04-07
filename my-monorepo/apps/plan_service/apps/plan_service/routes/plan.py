@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from ..services.flight_plan_service import FlightPlanService
 from ..services.hotel_plan_service import HotelPlanService
+from ..services.attraction_plan_service import AttractionPlanService
 from ..utils.api_errors import (
     ExternalServiceError,
     ValidationError,
@@ -564,14 +565,218 @@ def delete_hotel():
 
 @plan_bp.route("/api/plan/attractions/save", methods=["POST"])
 def save_attraction():
-    return
+    """
+    Save an attraction to a trip (manual or from catalog).
+
+    This endpoint supports two modes:
+
+    Mode 1 - Manual Create (when 'name' is provided):
+    {
+        "trip_id": "uuid-string",
+        "user_id": "uuid-string",
+        "attraction": {
+            "name": "Gardens by the Bay",       // Required for manual mode
+            "location": "Singapore",            // Optional
+            "visit_time": "2026-04-15T10:00",   // Optional
+            "duration_minutes": 180,            // Optional
+            "cost": "32.00",                    // Optional
+            "gmaps_link": "https://..."         // Optional
+        }
+    }
+
+    Mode 2 - From Catalog (when 'catalog_attraction_id' is provided):
+    {
+        "trip_id": "uuid-string",
+        "user_id": "uuid-string",
+        "attraction": {
+            "catalog_attraction_id": "uuid-string",  // Required for catalog mode
+            "visit_time": "2026-04-15T10:00",        // Optional override
+            "duration_minutes": 180,                  // Optional override
+            "cost": "50.00"                          // Optional override
+        }
+    }
+
+    Response (200 OK):
+    {
+        "success": true,
+        "data": {
+            "attraction_id": "uuid-string",
+            "trip_id": "uuid-string",
+            "name": "Gardens by the Bay",
+            "location": "Singapore",
+            ...
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"success": False, "error": "Request body is required"}), 400
+
+        # Validate required fields at route level
+        required = ["trip_id", "user_id", "attraction"]
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Missing required fields: {', '.join(missing)}",
+                }
+            ), 400
+
+        # Save attraction via service
+        service = AttractionPlanService()
+        result = service.save_attraction(data)
+
+        return jsonify({"success": True, "data": result}), 200
+
+    except ValidationError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except NotFoundError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except UnauthorizedError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except ExternalServiceError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except Exception as e:
+        return jsonify(
+            {"success": False, "error": f"Internal server error: {str(e)}"}
+        ), 500
 
 
 @plan_bp.route("/api/plan/attractions/update", methods=["POST"])
 def update_attraction():
-    return
+    """
+    Update an existing attraction in a trip.
+
+    This endpoint:
+    1. Validates user authorization (must be trip member)
+    2. Calls attractions service to update the attraction
+    3. Publishes ATTRACTION_UPDATED event to Redis for real-time collaboration
+
+    Request Body:
+    {
+        "attraction_id": "uuid-string",
+        "trip_id": "uuid-string",
+        "user_id": "uuid-string",
+        "attraction": {
+            "name": "Updated Name",           // Optional
+            "location": "Singapore",          // Optional
+            "visit_time": "2026-04-15T10:00", // Optional
+            "duration_minutes": 180,          // Optional
+            "cost": "50.00",                  // Optional
+            "gmaps_link": "https://..."       // Optional
+        }
+    }
+
+    Response (200 OK):
+    {
+        "success": true,
+        "data": {
+            "attraction_id": "uuid-string",
+            "trip_id": "uuid-string",
+            "name": "Updated Name",
+            ...
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"success": False, "error": "Request body is required"}), 400
+
+        # Validate required fields at route level
+        required = ["attraction_id", "trip_id", "user_id", "attraction"]
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Missing required fields: {', '.join(missing)}",
+                }
+            ), 400
+
+        # Update attraction via service
+        service = AttractionPlanService()
+        result = service.update_attraction(data)
+
+        return jsonify({"success": True, "data": result}), 200
+
+    except ValidationError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except NotFoundError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except UnauthorizedError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except ExternalServiceError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except Exception as e:
+        return jsonify(
+            {"success": False, "error": f"Internal server error: {str(e)}"}
+        ), 500
 
 
 @plan_bp.route("/api/plan/attractions/delete", methods=["POST"])
 def delete_attraction():
-    return
+    """
+    Soft delete an attraction from a trip.
+
+    This endpoint:
+    1. Validates user authorization (must be trip member)
+    2. Fetches attraction data before deletion
+    3. Calls attractions service to soft delete the attraction
+    4. Publishes ATTRACTION_DELETED event to Redis for real-time collaboration
+
+    Request Body:
+    {
+        "attraction_id": "uuid-string",
+        "trip_id": "uuid-string",
+        "user_id": "uuid-string"
+    }
+
+    Response (200 OK):
+    {
+        "success": true,
+        "data": {
+            "deleted_attraction": { ... },
+            "message": "Attraction deleted successfully"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"success": False, "error": "Request body is required"}), 400
+
+        # Validate required fields at route level
+        required = ["attraction_id", "trip_id", "user_id"]
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Missing required fields: {', '.join(missing)}",
+                }
+            ), 400
+
+        # Delete attraction via service
+        service = AttractionPlanService()
+        result = service.delete_attraction(data)
+
+        return jsonify({"success": True, "data": result}), 200
+
+    except ValidationError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except NotFoundError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except UnauthorizedError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except ExternalServiceError as e:
+        return jsonify({"success": False, "error": e.message}), e.status_code
+    except Exception as e:
+        return jsonify(
+            {"success": False, "error": f"Internal server error: {str(e)}"}
+        ), 500
