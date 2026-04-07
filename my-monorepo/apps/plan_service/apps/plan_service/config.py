@@ -25,6 +25,10 @@ class Config:
     SAVED_HOTELS_HOST = os.getenv("SAVED_HOTELS_HOST", "saved-hotels")
     SAVED_HOTELS_PORT = int(os.getenv("SAVED_HOTELS_PORT", 5000))
 
+    # Attractions service connection
+    ATTRACTIONS_HOST = os.getenv("ATTRACTIONS_HOST", "attractions")
+    ATTRACTIONS_PORT = int(os.getenv("ATTRACTIONS_PORT", 5000))
+
     # Redis connection
     REDIS_HOST = os.getenv("REDIS_HOST", "redis")
     REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
