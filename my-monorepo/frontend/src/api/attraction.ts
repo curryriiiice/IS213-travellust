@@ -16,6 +16,7 @@ interface RawAttraction {
   visit_time?: string;
   duration_minutes?: number;
   cost: string | number;
+  status?: string;
   category?: string;
   description?: string;
   deleted?: boolean;
@@ -32,18 +33,26 @@ interface AttractionsResponse {
   error?: string;
 }
 
-/**
- * Safely parse datetime string
- */
-function parseDateTime(dateTimeStr: string): Date {
-  let date = new Date(dateTimeStr);
-  if (isNaN(date.getTime())) {
-    date = new Date(`${dateTimeStr}Z`);
+function extractDateTimeParts(rawDateTime?: string, fallback?: string): { date: string; time: string } {
+  const value = rawDateTime || fallback || new Date().toISOString();
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+
+  if (match) {
+    return { date: match[1], time: match[2] };
   }
-  if (isNaN(date.getTime())) {
-    return new Date();
+
+  const parsed = new Date(value);
+  if (!isNaN(parsed.getTime())) {
+    return {
+      date: parsed.toISOString().slice(0, 10),
+      time: parsed.toTimeString().slice(0, 5),
+    };
   }
-  return date;
+
+  return {
+    date: new Date().toISOString().slice(0, 10),
+    time: "09:00",
+  };
 }
 
 /**
@@ -71,11 +80,7 @@ function parseCost(costValue: number | string | undefined): number {
  * Map raw attraction data to ItineraryNode format
  */
 function mapAttractionToNode(raw: RawAttraction, tripCurrency: string): ItineraryNode {
-  const visitDate = parseDateTime(raw.visit_time ?? raw.created_at ?? new Date().toISOString());
-
-  // Extract date (YYYY-MM-DD) and time (HH:mm)
-  const date = visitDate.toISOString().split("T")[0];
-  const time = visitDate.toTimeString().slice(0, 5);
+  const { date, time } = extractDateTimeParts(raw.visit_time, raw.created_at);
 
   // Format duration (e.g., "2h 30m")
   const duration = formatDuration(raw.duration_minutes ?? 0);
@@ -85,6 +90,13 @@ function mapAttractionToNode(raw: RawAttraction, tripCurrency: string): Itinerar
 
   // Build subtitle with location
   const subtitle = raw.location;
+
+  const derivedStatus =
+    cost <= 0
+      ? "added"
+      : raw.status === "confirmed"
+      ? "confirmed"
+      : "pending";
 
   return {
     id: raw.attraction_id,
@@ -96,10 +108,13 @@ function mapAttractionToNode(raw: RawAttraction, tripCurrency: string): Itinerar
     duration,
     cost: cost || 0,
     currency: tripCurrency,
-    status: "pending",
-      details: {
-        name: raw.name,
-        gmaps_link: raw.gmaps_link || "",
+    status: derivedStatus,
+    sourceType: raw.catalog_attraction_id ? "catalog" : "manual",
+    mapsLink: raw.gmaps_link || "",
+    rawVisitTime: raw.visit_time ?? "",
+    details: {
+      name: raw.name,
+      gmaps_link: raw.gmaps_link || "",
       visit_time: raw.visit_time ?? "",
       duration_minutes: String(raw.duration_minutes ?? 0),
       location: raw.location,
@@ -181,6 +196,24 @@ async function fetchCatalogAttractionsFromPath(path: string): Promise<Attraction
   }
 
   return json.data.map(mapCatalogAttractionToOffer);
+}
+
+export async function searchCatalogAttractions(query: string): Promise<AttractionOffer[]> {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const response = await fetch(
+    `/api/attractions-service/catalog/attractions?search=${encodeURIComponent(trimmed)}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to search attractions: ${response.status}`);
+  }
+
+  const json: AttractionsResponse = await response.json();
+  return (json.data ?? []).map(mapCatalogAttractionToOffer);
 }
 
 export async function fetchCatalogAttractions(): Promise<AttractionOffer[]> {

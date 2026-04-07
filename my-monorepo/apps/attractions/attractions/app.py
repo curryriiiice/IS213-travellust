@@ -17,8 +17,9 @@ MUTABLE_FIELDS = {
     "visit_time",
     "duration_minutes",
     "cost",
+    "status",
 }
-CATALOG_COPY_OPTIONAL_FIELDS = {"visit_time", "duration_minutes", "cost"}
+CATALOG_COPY_OPTIONAL_FIELDS = {"visit_time", "duration_minutes", "cost", "status"}
 TRIP_SCOPED_MANUAL_FIELDS = MUTABLE_FIELDS - {"trip_id"}
 
 

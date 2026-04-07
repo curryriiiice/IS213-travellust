@@ -17,6 +17,30 @@ export interface BookFlightResponse {
   [key: string]: unknown;
 }
 
+export interface BookAttractionResponse {
+  data?: {
+    booking_confirmation?: string;
+    resolved_trip_id?: string;
+  };
+  error?: string;
+}
+
+async function parseBookingResponse<T>(response: Response): Promise<T> {
+  const raw = await response.text();
+
+  if (!raw.trim()) {
+    throw new Error(`Booking service returned an empty response (${response.status}).`);
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(
+      `Booking service returned a non-JSON response (${response.status}). This usually means the route is missing on the backend or the service returned an HTML error page.`
+    );
+  }
+}
+
 /**
  * Book a flight via the composite book-flight microservice.
  *
@@ -44,10 +68,60 @@ export async function bookFlight(
     body: JSON.stringify(payload),
   });
 
-  const json: BookFlightResponse = await response.json();
+  const json = await parseBookingResponse<BookFlightResponse>(response);
 
   if (!response.ok) {
     throw new Error(json.message || `Booking failed with status ${response.status}`);
+  }
+
+  return json;
+}
+
+export async function bookAttraction(
+  tripId: string,
+  mainUserId: string,
+  attractionId: string
+): Promise<BookAttractionResponse> {
+  const response = await fetch("/api/book-attractions-service/api/book-attractions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      trip_id: tripId,
+      paid_by: mainUserId,
+      user_id: [mainUserId],
+      attraction_id: attractionId,
+    }),
+  });
+
+  const json = await parseBookingResponse<BookAttractionResponse>(response);
+
+  if (!response.ok) {
+    throw new Error(json.error || `Attraction booking failed with status ${response.status}`);
+  }
+
+  return json;
+}
+
+export async function cancelAttractionBooking(
+  tripId: string,
+  mainUserId: string,
+  attractionId: string
+): Promise<BookAttractionResponse> {
+  const response = await fetch("/api/book-attractions-service/api/cancel-attractions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      trip_id: tripId,
+      paid_by: mainUserId,
+      user_id: [mainUserId],
+      attraction_id: attractionId,
+    }),
+  });
+
+  const json = await parseBookingResponse<BookAttractionResponse>(response);
+
+  if (!response.ok) {
+    throw new Error(json.error || `Attraction cancel failed with status ${response.status}`);
   }
 
   return json;

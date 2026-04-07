@@ -112,6 +112,7 @@ class SupabaseAttractionRepository:
             "gmaps_link": catalog_attraction.get("gmaps_link"),
             "cost": catalog_attraction.get("cost"),
             "catalog_attraction_id": catalog_attraction_id,
+            "status": "pending",
             "deleted": False,
         }
         if payload:
