@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { TripCard } from "@/components/TripCard";
 import { TripCommandCenter } from "@/components/TripCommandCenter";
 import { mockCollaborators } from "@/data/mockData";
-import { getUserTrips } from "@/api/trip";
+import { getUserTrips, createTrip } from "@/api/trip";
 import type { Trip, ItineraryNode, Collaborator } from "@/types/trip";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -80,27 +80,32 @@ const Index = () => {
     setTripCollaborators([mockCollaborators[0]]);
   };
 
-  const handleCreateTrip = () => {
+  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
+
+  const handleCreateTrip = async () => {
     if (!tripName || !tripDestination || !tripStartDate || !tripEndDate) return;
-    const newTrip: Trip = {
-      id: `trip-${Date.now()}`,
-      name: tripName,
-      destination: tripDestination,
-      startDate: format(tripStartDate, "yyyy-MM-dd"),
-      endDate: format(tripEndDate, "yyyy-MM-dd"),
-      budget: Number(tripBudget) || 0,
-      spent: 0,
-      currency: tripCurrency,
-      collaborators: tripCollaborators,
-      nodes: [],
-      flight_ids: null,
-      hotel_ids: null,
-      attraction_ids: null,
-    };
-    setTrips((prev) => [...prev, newTrip]);
-    toast({ title: "Trip created", description: `${tripName} — ${tripDestination}` });
-    setNewTripOpen(false);
-    resetNewTripForm();
+    setIsCreatingTrip(true);
+    try {
+      const created = await createTrip(CURRENT_USER_ID, {
+        name: tripName,
+        destination: tripDestination,
+        startDate: format(tripStartDate, "yyyy-MM-dd"),
+        budget: Number(tripBudget) || 0,
+        currency: tripCurrency,
+      });
+      setTrips((prev) => [...prev, created]);
+      toast({ title: "Trip created", description: `${tripName} — ${tripDestination}` });
+      setNewTripOpen(false);
+      resetNewTripForm();
+    } catch (err) {
+      toast({
+        title: "Failed to create trip",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingTrip(false);
+    }
   };
 
   const toggleTripCollab = (collab: Collaborator) => {
@@ -455,9 +460,9 @@ const Index = () => {
               size="sm"
               className="w-full"
               onClick={handleCreateTrip}
-              disabled={!tripName || !tripDestination || !tripStartDate || !tripEndDate}
+              disabled={!tripName || !tripDestination || !tripStartDate || !tripEndDate || isCreatingTrip}
             >
-              <Plus className="w-3.5 h-3.5" /> Create Trip
+              <Plus className="w-3.5 h-3.5" /> {isCreatingTrip ? "Creating…" : "Create Trip"}
             </Button>
           </div>
         </DialogContent>

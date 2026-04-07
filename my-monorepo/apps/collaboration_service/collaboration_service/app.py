@@ -12,6 +12,43 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 active_users = {}
 
+PERSISTENT_EVENT_TYPES = {
+    "FLIGHT_ADDED",
+    "FLIGHT_DELETED",
+    "HOTEL_ADDED",
+    "HOTEL_DELETED",
+    "ATTRACTION_ADDED",
+    "ATTRACTION_UPDATED",
+    "ATTRACTION_DELETED",
+}
+
+def build_description(event_type: str, payload: dict) -> str:
+    """Build a human-readable description from the event type and its payload."""
+    if event_type == "FLIGHT_ADDED":
+        name = f"{payload.get('airline', '')} {payload.get('flight_number', '')}".strip() or "Flight"
+        return f"{name} added"
+    if event_type == "FLIGHT_UPDATED":
+        name = f"{payload.get('airline', '')} {payload.get('flight_number', '')}".strip() or "Flight"
+        return f"{name} updated"
+    if event_type == "FLIGHT_DELETED":
+        deleted = payload.get("deleted_flight") or {}
+        name = f"{deleted.get('airline', '')} {deleted.get('flight_number', '')}".strip() or "Flight"
+        return f"{name} removed"
+    if event_type == "HOTEL_ADDED":
+        return f"{payload.get('name', 'Hotel')} added"
+    if event_type == "HOTEL_DELETED":
+        hotels = payload.get("deleted_hotels") or []
+        name = hotels[0].get("name", "Hotel") if hotels else "Hotel"
+        return f"{name} removed"
+    if event_type == "ATTRACTION_ADDED":
+        return f"{payload.get('name', 'Attraction')} added"
+    if event_type == "ATTRACTION_UPDATED":
+        return f"{payload.get('name', 'Attraction')} updated"
+    if event_type == "ATTRACTION_DELETED":
+        deleted = payload.get("deleted_attraction") or {}
+        return f"{deleted.get('name', 'Attraction')} removed"
+    return event_type
+
 
 def verify_user_access(trip_id: str, user_id: str) -> bool:
     """Verify user is allowed to access this trip."""
@@ -98,6 +135,27 @@ def get_trip_members(trip_id):
     return jsonify({"trip_id": trip_id, "members": get_trip_users(trip_id)})
 
 
+@app.route("/api/trip/<trip_id>/activity")
+def get_trip_activity(trip_id):
+    """Return the last 50 persisted activity entries for a trip, newest first."""
+    if not supabase:
+        return jsonify({"data": [], "error": "Supabase not configured"}), 503
+
+    try:
+        response = (
+            supabase.table("trip_activity")
+            .select("id, trip_id, event_type, user_id, description, created_at")
+            .eq("trip_id", trip_id)
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+        )
+        return jsonify({"data": response.data})
+    except Exception as e:
+        print(f"Error fetching trip activity: {e}")
+        return jsonify({"error": "Failed to fetch activity"}), 500
+
+
 def start_redis_listener():
     """Background thread to listen to Redis and broadcast to WebSocket."""
 
@@ -113,8 +171,22 @@ def start_redis_listener():
                     channel = message["channel"]
                     trip_id = channel.split(":")[-1]
                     data = json.loads(message["data"])
-                    print(f"Broadcasting trip_update to room {trip_id}")  # Add debug log
+                    print(f"Broadcasting trip_update to room {trip_id}")
                     socketio.emit("trip_update", data, room=trip_id)
+
+                    event_type = data.get("type", "")
+                    if supabase and event_type in PERSISTENT_EVENT_TYPES:
+                        try:
+                            supabase.table("trip_activity").insert({
+                                "trip_id":     trip_id,
+                                "event_type":  event_type,
+                                "user_id":     data.get("user_id") or None,
+                                "description": build_description(event_type, data.get("data") or {}),
+                                "payload":     data.get("data") or {},
+                                "created_at":  data.get("timestamp", datetime.utcnow().isoformat()),
+                            }).execute()
+                        except Exception as db_err:
+                            print(f"Failed to persist activity log entry: {db_err}")
             except json.JSONDecodeError as e:
                 print(f"Invalid JSON in Redis message: {e}")
             except Exception as e:
@@ -126,4 +198,4 @@ def start_redis_listener():
 if __name__ == "__main__" or __name__ == "collaboration_service.app":
     start_redis_listener()
     port = int(os.getenv("PORT", "5010"))
-    socketio.run(app, host="0.0.0.0", port=port, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=port, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)

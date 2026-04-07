@@ -7,6 +7,7 @@ import type { Trip } from "@/types/trip";
  */
 interface RawTrip {
   id: string;
+  trip_name?: string | null;
   locations?: string[];
   trip_date?: string;
   calculated_cost?: number | null;
@@ -28,7 +29,7 @@ function mapRawTrip(raw: RawTrip): Trip {
 
   return {
     id: raw.id,
-    name: destination,          // Use destination as trip name (no separate name field)
+    name: raw.trip_name || destination,
     destination,
     startDate,
     endDate,
@@ -42,6 +43,40 @@ function mapRawTrip(raw: RawTrip): Trip {
     attraction_ids: raw.attraction_ids || null,
     member_ids: raw.member_ids || null,
   };
+}
+
+/** Create a new trip and return it mapped to the frontend Trip shape. */
+export async function createTrip(
+  userId: string,
+  data: {
+    name: string;
+    destination: string;
+    startDate: string;
+    budget: number;
+    currency: string;
+  }
+): Promise<Trip> {
+  const res = await fetch("/api/trips-atomic/trips", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      trip_name: data.name,
+      locations: [data.destination],
+      trip_date: data.startDate,
+      calculated_cost: data.budget,
+      member_ids: [userId],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? `Failed to create trip (${res.status})`);
+  }
+
+  const json = await res.json();
+  const raw: RawTrip = json.data;
+
+  return mapRawTrip(raw);
 }
 
 /** Fetch all trips for the given user from the trips_atomic service. */
