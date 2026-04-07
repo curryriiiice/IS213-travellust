@@ -88,7 +88,7 @@ export default function Login() {
         <p className="text-center text-xs text-muted-foreground mt-5">
           Don&apos;t have an account?{" "}
           <a
-            href="/register"
+            href="/signup"
             className="text-accent hover:opacity-80 transition-opacity"
           >
             Sign up

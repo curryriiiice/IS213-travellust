@@ -18,6 +18,7 @@ import AddAttractionToTrip from "./pages/AddAttractionToTrip.tsx";
 import Login from "./pages/Login";
 import Logout from "./pages/Logout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Signup from "./pages/SignUp";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/landing" element={<Landing />} />
 
@@ -119,3 +121,4 @@ const App = () => (
 );
 
 export default App;
+
