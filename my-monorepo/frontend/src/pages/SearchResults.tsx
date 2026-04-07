@@ -36,6 +36,7 @@ import {
 } from "@/api/attraction";
 import type { Trip } from "@/types/trip";
 import { toast } from "@/hooks/use-toast";
+import { saveFlight, saveHotel, saveAttraction } from "@/api/plan";
 
 type SearchTab = "flights" | "hotels" | "attractions";
 type FlightSortKey = "price" | "duration" | "departure";
@@ -265,21 +266,32 @@ const SearchResults = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAddToTrip = (trip: Trip) => {
+  const handleAddToTrip = async (trip: Trip) => {
     if (!tripPickerItem) return;
-    const itemName = tripPickerItem.type === "flight"
-      ? `${tripPickerItem.data.flightNumber}`
-      : tripPickerItem.data.name;
-    const itemDetail = tripPickerItem.type === "flight"
-      ? `${tripPickerItem.data.origin} → ${tripPickerItem.data.destination} · $${tripPickerItem.data.price}`
-      : tripPickerItem.type === "hotel"
-      ? `${tripPickerItem.data.city} · ${tripPickerItem.data.price === 0 ? 'Unavailable' : '$' + tripPickerItem.data.price + '/night'}`
-      : `${tripPickerItem.data.city} · $${tripPickerItem.data.price}`;
 
-    toast({
-      title: `Added to ${trip.name}`,
-      description: `${itemName} — ${itemDetail}`,
-    });
+    const itemName =
+      tripPickerItem.type === "flight"
+        ? tripPickerItem.data.flightNumber
+        : tripPickerItem.data.name;
+
+    try {
+      if (tripPickerItem.type === "flight") {
+        await saveFlight(trip.id, CURRENT_USER_ID, tripPickerItem.data, fDate);
+      } else if (tripPickerItem.type === "hotel") {
+        await saveHotel(trip.id, CURRENT_USER_ID, tripPickerItem.data, hCheckIn, hCheckOut);
+      } else {
+        await saveAttraction(trip.id, CURRENT_USER_ID, tripPickerItem.data, aDate);
+      }
+      toast({ title: `Added to ${trip.name}`, description: itemName });
+    } catch (err) {
+      console.error("Failed to add to trip:", err);
+      toast({
+        title: "Failed to add to trip",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+
     setTripPickerItem(null);
   };
 

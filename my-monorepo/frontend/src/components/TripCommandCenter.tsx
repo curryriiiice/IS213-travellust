@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
@@ -19,6 +19,7 @@ import { fetchFlightById } from "@/api/flight";
 import { fetchHotelById } from "@/api/hotel";
 import { fetchAttractionsByTripId } from "@/api/attraction";
 import { getUserBookedTickets } from "@/api/booking";
+import { useCollabSocket } from "@/hooks/useCollabSocket";
 
 interface TripCommandCenterProps {
   trip: Trip;
@@ -26,12 +27,53 @@ interface TripCommandCenterProps {
   onUpdateTrip?: (trip: Trip) => void;
 }
 
+const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+
 export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCenterProps) {
   const navigate = useNavigate();
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);
   const [addNodeOpen, setAddNodeOpen] = useState(false);
   const [enrichedNodes, setEnrichedNodes] = useState<ItineraryNode[]>([]);
   const [isEnriching, setIsEnriching] = useState(false);
+
+  const sortNodes = (nodes: ItineraryNode[]) =>
+    [...nodes].sort((a, b) => {
+      const d = a.date.localeCompare(b.date);
+      return d !== 0 ? d : a.time.localeCompare(b.time);
+    });
+
+  const handleTripUpdate = useCallback(
+    async (event: { type: string; data: Record<string, unknown> }) => {
+      const { type, data } = event;
+      const itemId = (data?.id ?? data?.flight_id ?? data?.hotel_id ?? data?.attraction_id) as string | undefined;
+
+      if (type === "FLIGHT_ADDED" && itemId) {
+        const node = await fetchFlightById(itemId, trip.currency).catch(() => null);
+        if (node) setEnrichedNodes((prev) => sortNodes([...prev, node]));
+      } else if (type === "FLIGHT_DELETED" && itemId) {
+        setEnrichedNodes((prev) => prev.filter((n) => n.id !== itemId));
+      } else if (type === "HOTEL_ADDED" && itemId) {
+        const node = await fetchHotelById(itemId, trip.currency).catch(() => null);
+        if (node) setEnrichedNodes((prev) => sortNodes([...prev, node]));
+      } else if (type === "HOTEL_DELETED" && itemId) {
+        setEnrichedNodes((prev) => prev.filter((n) => n.id !== itemId));
+      } else if (
+        type === "ATTRACTION_ADDED" ||
+        type === "ATTRACTION_UPDATED" ||
+        type === "ATTRACTION_DELETED"
+      ) {
+        // Re-fetch all attractions and merge with non-attraction nodes
+        const freshAttractions = await fetchAttractionsByTripId(trip.id, trip.currency).catch(() => [] as ItineraryNode[]);
+        setEnrichedNodes((prev) => {
+          const nonAttractions = prev.filter((n) => n.type !== "attraction");
+          return sortNodes([...nonAttractions, ...freshAttractions]);
+        });
+      }
+    },
+    [trip.id, trip.currency]
+  );
+
+  const { activeUsers, activityLog } = useCollabSocket(trip.id, CURRENT_USER_ID, handleTripUpdate);
 
   // Add node form state
   const [nodeType, setNodeType] = useState<"flight" | "hotel" | "attraction">("flight");
@@ -111,7 +153,6 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
       }
 
       // Fetch user's real bookings and mark nodes confirmed where a matching ticket exists
-      const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
       const userTickets = await getUserBookedTickets(CURRENT_USER_ID);
       const bookedIds = new Set(userTickets.map((t) => t.f_h_a_id));
 
@@ -300,7 +341,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
 
         {/* Right: Ledger & Social */}
         <div className="w-80 shrink-0 bg-card overflow-y-auto">
-          <LedgerPane trip={trip} />
+          <LedgerPane trip={trip} activeUsers={activeUsers} activityLog={activityLog} />
         </div>
       </div>
 
