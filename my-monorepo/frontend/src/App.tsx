@@ -16,6 +16,8 @@ import Booking from "./pages/Booking.tsx";
 import BookedTickets from "./pages/BookedTickets.tsx";
 import AddAttractionToTrip from "./pages/AddAttractionToTrip.tsx";
 import Login from "./pages/Login";
+import Logout from "./pages/Logout";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -30,16 +32,83 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Login />} />
-                <Route path="/trips" element={<Index />} />
-                <Route path="/search" element={<SearchResults />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/details" element={<ItemDetail />} />
-                <Route path="/booking" element={<Booking />} />
-                <Route path="/bookings" element={<BookedTickets />} />
-                <Route path="/attractions/add-to-trip" element={<AddAttractionToTrip />} />
                 <Route path="/login" element={<Login />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="/landing" element={<Landing />} />
+
+                <Route
+                  path="/trips"
+                  element={
+                    <ProtectedRoute>
+                      <Index />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/search"
+                  element={
+                    <ProtectedRoute>
+                      <SearchResults />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/details"
+                  element={
+                    <ProtectedRoute>
+                      <ItemDetail />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/booking"
+                  element={
+                    <ProtectedRoute>
+                      <Booking />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/bookings"
+                  element={
+                    <ProtectedRoute>
+                      <BookedTickets />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/attractions/add-to-trip"
+                  element={
+                    <ProtectedRoute>
+                      <AddAttractionToTrip />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/logout"
+                  element={
+                    <ProtectedRoute>
+                      <Logout />
+                    </ProtectedRoute>
+                  }
+                  />
+                  
                 <Route path="*" element={<NotFound />} />
+                
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
@@ -50,5 +119,3 @@ const App = () => (
 );
 
 export default App;
-
-
