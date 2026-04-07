@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -32,9 +33,30 @@ import type { FlightOffer } from "@/data/flightData";
 import type { HotelOffer } from "@/data/hotelData";
 import type { AttractionOffer } from "@/data/attractionData";
 import type { ItineraryNode } from "@/types/trip";
-import { bookFlight, bookHotel } from "@/api/booking";
+import { bookAttraction, bookFlight, cancelAttractionBooking, bookHotel } from "@/api/booking";
+import { deletePlannedAttraction, updatePlannedAttraction } from "@/api/plan";
 
 const MAIN_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+
+function addMinutesToTime(time: string, minutesToAdd: number): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return time;
+  }
+  const totalMinutes = hours * 60 + minutes + minutesToAdd;
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const nextHours = Math.floor(normalized / 60);
+  const nextMinutes = normalized % 60;
+  return `${String(nextHours).padStart(2, "0")}:${String(nextMinutes).padStart(2, "0")}`;
+}
+
+function durationMinutesFromNode(node: ItineraryNode): number {
+  const fromDetails = Number(node.details.duration_minutes ?? "");
+  if (!Number.isNaN(fromDetails) && fromDetails > 0) {
+    return fromDetails;
+  }
+  return 120;
+}
 
 type ItemState =
   | { itemType: "flight"; data: FlightOffer }
@@ -70,8 +92,13 @@ const ItemDetail = () => {
     navigate("/booking", { state });
   };
 
-  // For node-type flight and hotel items: open guest selection modal
-  const handleBookFlightOrHotel = () => {
+  const handleAddAttractionToTrip = () => {
+    if (state.itemType !== "attraction") return;
+    navigate("/attractions/add-to-trip", { state });
+  };
+
+  // For node-type flight items: open passenger selection modal
+  const handleBookFlight = () => {
     if (state.itemType !== "node") return;
     const memberIds = (state as { memberIds?: string[] }).memberIds ?? [];
     // Pre-select main user if they are in the list
@@ -157,11 +184,20 @@ const ItemDetail = () => {
   const isNodeHotel =
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "hotel";
 
-  const onBook = state.fromBookings
-    ? undefined
-    : isNodeFlight || isNodeHotel
-    ? handleBookFlightOrHotel
-    : handleBookGeneric;
+  const onBook =
+    // For node-type hotel: always show book button (even from bookings)
+    isNodeHotel
+    ? handleBookFlight
+    // For node-type flight: show book button (hide if from bookings)
+    : isNodeFlight
+    ? state.fromBookings ? undefined : handleBookFlight
+    // For attraction: add to trip
+    : state.itemType === "attraction"
+    ? handleAddAttractionToTrip
+    // For generic flight/hotel: show book button (hide if from bookings)
+    : state.itemType === "flight" || state.itemType === "hotel"
+    ? state.fromBookings ? undefined : handleBookGeneric
+    : undefined;
 
   // Member IDs for modal
   const memberIds =
@@ -177,7 +213,7 @@ const ItemDetail = () => {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <button onClick={() => navigate(-1)} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Compass className="w-4 h-4 text-accent" />
             <span className="text-sm font-medium tracking-tight">TravelLust</span>
           </button>
@@ -196,7 +232,13 @@ const ItemDetail = () => {
         {state.itemType === "flight" && <FlightDetail flight={state.data} onBook={onBook} />}
         {state.itemType === "hotel" && <HotelDetail hotel={state.data} onBook={onBook} />}
         {state.itemType === "attraction" && <AttractionDetail attraction={state.data} onBook={onBook} />}
-        {state.itemType === "node" && <NodeDetail node={state.data} onBook={onBook} />}
+        {state.itemType === "node" && (
+          <NodeDetail
+            node={state.data}
+            tripId={state.tripId}
+            onBook={onBook}
+          />
+        )}
       </div>
 
       {/* Passenger Selection Modal */}
@@ -559,7 +601,15 @@ function AttractionDetail({ attraction, onBook }: { attraction: AttractionOffer;
   );
 }
 
-function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void }) {
+function NodeDetail({
+  node,
+  tripId,
+  onBook,
+}: {
+  node: ItineraryNode;
+  tripId?: string;
+  onBook?: () => void;
+}) {
   const typeConfig = {
     flight: { icon: Plane, color: "text-accent", label: "Flight" },
     hotel: { icon: Building2, color: "text-node-hotel", label: "Hotel" },
@@ -632,10 +682,263 @@ function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void
 
   const excludedFields = ["price_sgd", "price_usd", "arrival_time"];
 
-  // Determine if this is a bookable node (status not already confirmed)
   const isFlightNode = node.type === "flight";
+  const isAttractionNode = node.type === "attraction";
+  // Determine if this is a bookable node (status not already confirmed)
   const isHotelNode = node.type === "hotel";
   const isConfirmed = node.status === "confirmed";
+  const isFreeAttraction = isAttractionNode && node.cost <= 0;
+  const isCatalogAttraction =
+    isAttractionNode &&
+    node.sourceType === "catalog";
+  const isManualAttraction = isAttractionNode && node.sourceType === "manual";
+  const showEditButton = isAttractionNode && Boolean(tripId);
+  const showAttractionBookButton =
+    isAttractionNode &&
+    Boolean(tripId) &&
+    isCatalogAttraction &&
+    !isFreeAttraction &&
+    !isConfirmed;
+  const showAttractionCancelButton =
+    isAttractionNode &&
+    Boolean(tripId) &&
+    isCatalogAttraction &&
+    !isFreeAttraction &&
+    isConfirmed;
+  const showManualConfirmButton =
+    isAttractionNode &&
+    Boolean(tripId) &&
+    isManualAttraction &&
+    !isFreeAttraction &&
+    !isConfirmed;
+  const showGenericBookButton = Boolean(onBook);
+  const displayStatus =
+    isAttractionNode && isFreeAttraction
+      ? "Added"
+      : isAttractionNode && isConfirmed
+      ? isCatalogAttraction
+        ? "Booked"
+        : "Confirmed"
+      : isAttractionNode
+      ? "Pending"
+      : node.status.charAt(0).toUpperCase() + node.status.slice(1);
+
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSavingAttraction, setIsSavingAttraction] = useState(false);
+  const [isBookingAttraction, setIsBookingAttraction] = useState(false);
+  const [editName, setEditName] = useState(node.title);
+  const [editLocation, setEditLocation] = useState(node.subtitle);
+  const [editMapsLink, setEditMapsLink] = useState(node.mapsLink ?? node.details.gmaps_link ?? "");
+  const [editDate, setEditDate] = useState(node.date);
+  const [editTime, setEditTime] = useState(node.time);
+  const [editDuration, setEditDuration] = useState(
+    node.details.duration_minutes ?? String(durationMinutesFromNode(node))
+  );
+  const [editEndTime, setEditEndTime] = useState(
+    addMinutesToTime(node.time, durationMinutesFromNode(node))
+  );
+  const [editCost, setEditCost] = useState(String(node.cost ?? 0));
+
+  useEffect(() => {
+    setEditName(node.title);
+    setEditLocation(node.subtitle);
+    setEditMapsLink(node.mapsLink ?? node.details.gmaps_link ?? "");
+    setEditDate(node.date);
+    setEditTime(node.time);
+    const durationMinutes = durationMinutesFromNode(node);
+    setEditDuration(String(durationMinutes));
+    setEditEndTime(addMinutesToTime(node.time, durationMinutes));
+    setEditCost(String(node.cost ?? 0));
+  }, [node]);
+
+  useEffect(() => {
+    const durationMinutes = Number(editDuration);
+    if (!Number.isNaN(durationMinutes) && durationMinutes >= 0) {
+      setEditEndTime(addMinutesToTime(editTime, durationMinutes));
+    }
+  }, [editTime, editDuration]);
+
+  const handleSaveAttraction = async () => {
+    if (!tripId) {
+      toast({
+        title: "Update failed",
+        description: "Trip ID is missing for this attraction.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingAttraction(true);
+    try {
+      await updatePlannedAttraction(tripId, MAIN_USER_ID, node.id, {
+        name: editName,
+        location: editLocation,
+        gmapsLink: editMapsLink,
+        visitDate: editDate,
+        visitTime: editTime,
+        durationMinutes: Number(editDuration) || 120,
+        cost: Number(editCost) || 0,
+      });
+      toast({
+        title: "Attraction updated",
+        description: `${editName} was updated successfully.`,
+      });
+      setIsEditOpen(false);
+      window.history.back();
+    } catch (error) {
+      toast({
+        title: "Update failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingAttraction(false);
+    }
+  };
+
+  const handleEditEndTime = (nextEndTime: string) => {
+    setEditEndTime(nextEndTime);
+    const [startHours, startMinutes] = editTime.split(":").map(Number);
+    const [endHours, endMinutes] = nextEndTime.split(":").map(Number);
+    if (
+      [startHours, startMinutes, endHours, endMinutes].some((value) =>
+        Number.isNaN(value)
+      )
+    ) {
+      return;
+    }
+
+    let minutes = endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
+    if (minutes < 0) {
+      minutes += 1440;
+    }
+    setEditDuration(String(minutes));
+  };
+
+  const handleBookAttraction = async () => {
+    if (!tripId) {
+      toast({
+        title: "Booking failed",
+        description: "Trip ID is missing for this attraction.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBookingAttraction(true);
+    try {
+      await bookAttraction(tripId, MAIN_USER_ID, node.id);
+      toast({
+        title: "Attraction booked",
+        description: `${node.title} is now booked for your trip.`,
+      });
+      window.history.back();
+    } catch (error) {
+      toast({
+        title: "Booking failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBookingAttraction(false);
+    }
+  };
+
+  const handleConfirmManualAttraction = async () => {
+    if (!tripId) {
+      toast({
+        title: "Confirm failed",
+        description: "Trip ID is missing for this attraction.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingAttraction(true);
+    try {
+      await updatePlannedAttraction(tripId, MAIN_USER_ID, node.id, {
+        name: node.title,
+        location: node.subtitle,
+        gmapsLink: node.mapsLink ?? node.details.gmaps_link ?? "",
+        visitDate: node.date,
+        visitTime: node.time,
+        durationMinutes: Number(node.details.duration_minutes ?? "120") || 120,
+        cost: node.cost,
+        status: "confirmed",
+      });
+      toast({
+        title: "Attraction confirmed",
+        description: `${node.title} is now confirmed.`,
+      });
+      window.history.back();
+    } catch (error) {
+      toast({
+        title: "Confirm failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingAttraction(false);
+    }
+  };
+
+  const handleCancelAttraction = async () => {
+    if (!tripId) {
+      toast({
+        title: "Cancel failed",
+        description: "Trip ID is missing for this attraction.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsBookingAttraction(true);
+    try {
+      await cancelAttractionBooking(tripId, MAIN_USER_ID, node.id);
+      toast({
+        title: "Booking cancelled",
+        description: `${node.title} is back to pending.`,
+      });
+      window.history.back();
+    } catch (error) {
+      toast({
+        title: "Cancel failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBookingAttraction(false);
+    }
+  };
+
+  const handleRemoveAttraction = async () => {
+    if (!tripId) {
+      toast({
+        title: "Remove failed",
+        description: "Trip ID is missing for this attraction.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingAttraction(true);
+    try {
+      await deletePlannedAttraction(tripId, MAIN_USER_ID, node.id);
+      toast({
+        title: "Attraction removed",
+        description: `${node.title} was removed from the trip.`,
+      });
+      window.history.back();
+    } catch (error) {
+      toast({
+        title: "Remove failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingAttraction(false);
+    }
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
@@ -651,11 +954,18 @@ function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 py-4 border-t border-border">
             <InfoBlock icon={Clock} label="Date" value={new Date(node.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} />
             <InfoBlock icon={Clock} label="Time" value={node.time} />
+            {isAttractionNode && (
+              <InfoBlock
+                icon={Clock}
+                label="End Time"
+                value={addMinutesToTime(node.time, durationMinutesFromNode(node))}
+              />
+            )}
             {node.duration && <InfoBlock icon={Clock} label="Duration" value={node.duration} />}
             <InfoBlock
               icon={Shield}
               label="Status"
-              value={node.status.charAt(0).toUpperCase() + node.status.slice(1)}
+              value={displayStatus}
               warn={node.status === "conflict" || node.status === "cancelled"}
               success={isConfirmed}
             />
@@ -665,15 +975,38 @@ function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void
             <div className="mt-4 space-y-2">
               <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Details</span>
               {Object.entries(node.details)
-                .filter(([key]) => !excludedFields.includes(key))
+                .filter(([key, value]) => {
+                  if (excludedFields.includes(key)) return false;
+                  if (key === "catalog_attraction_id") return false;
+                  if (key === "gmaps_link" && !String(value || "").trim()) return false;
+                  if (!String(value || "").trim()) return false;
+                  return true;
+                })
                 .map(([key, val]) => (
                   <div key={key} className="text-sm py-1 border-b border-border/50">
-                    <span className="text-muted-foreground block">{fieldLabelMap[key] || key}</span>
+                    <span className="text-muted-foreground block">
+                      {key === "location" && isManualAttraction
+                        ? "Subtitle"
+                        : fieldLabelMap[key] || key}
+                    </span>
                     <span className={`font-mono break-all ${key === "external_link" ? "text-accent hover:text-accent/80" : ""}`}>
                       {key === "external_link" ? (
                         <a href={val as string} target="_blank" rel="noopener noreferrer" className="block mt-1 w-full">
                           {val as string}
                         </a>
+                      ) : key === "gmaps_link" ? (
+                        <a
+                          href={val as string}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block mt-1 text-accent underline underline-offset-4"
+                        >
+                          Open in Google Maps
+                        </a>
+                      ) : key === "visit_time" ? (
+                        <span>{node.time}</span>
+                      ) : key === "duration_minutes" ? (
+                        <span>{node.duration || `${val}m`}</span>
                       ) : key === "datetime_departure" || key === "datetime_arrival" ? (
                         <div className="flex flex-col gap-1 mt-1">
                           <div className="flex items-center gap-2">
@@ -695,7 +1028,7 @@ function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void
           )}
         </div>
 
-        {onBook && (
+        {(showGenericBookButton || showEditButton || showAttractionBookButton || showManualConfirmButton) && (
           <div className="px-6 py-4 border-t border-border bg-secondary/30 flex items-center justify-between">
             <div>
               <span className="text-2xl font-mono tabular-nums font-medium">
@@ -703,24 +1036,171 @@ function NodeDetail({ node, onBook }: { node: ItineraryNode; onBook?: () => void
               </span>
               <span className="text-sm text-muted-foreground ml-1.5">{node.currency}</span>
             </div>
-            <Button
-              variant="accent"
-              size="lg"
-              onClick={onBook}
-              disabled={isConfirmed && (isFlightNode || isHotelNode)}
-            >
-              {isConfirmed && (isFlightNode || isHotelNode) ? (
-                <>
-                  <Check className="w-4 h-4 mr-1.5" /> Booked
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4 mr-1.5" /> Book {cfg.label}
-                </>
+            <div className="flex items-center gap-3">
+              {showEditButton && (
+                <Button variant="outline" size="lg" onClick={() => setIsEditOpen(true)}>
+                  Edit
+                </Button>
               )}
-            </Button>
+              {showEditButton && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleRemoveAttraction}
+                  disabled={isSavingAttraction}
+                >
+                  Remove Attraction
+                </Button>
+              )}
+              {showManualConfirmButton && (
+                <Button
+                  variant="accent"
+                  size="lg"
+                  onClick={handleConfirmManualAttraction}
+                  disabled={isSavingAttraction}
+                >
+                  {isSavingAttraction ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Confirming...
+                    </>
+                  ) : (
+                    "Confirm"
+                  )}
+                </Button>
+              )}
+              {showAttractionCancelButton && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleCancelAttraction}
+                  disabled={isBookingAttraction}
+                >
+                  {isBookingAttraction ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Cancelling...
+                    </>
+                  ) : (
+                    "Cancel Booking"
+                  )}
+                </Button>
+              )}
+              {showAttractionBookButton && (
+                <Button
+                  variant="accent"
+                  size="lg"
+                  onClick={handleBookAttraction}
+                  disabled={isBookingAttraction}
+                >
+                  {isBookingAttraction ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Booking...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-1.5" /> Book Attraction
+                    </>
+                  )}
+                </Button>
+              )}
+              {showGenericBookButton && (
+                <Button
+                  variant="accent"
+                  size="lg"
+                  onClick={onBook}
+                  disabled={isConfirmed && (isFlightNode || isHotelNode)}
+                >
+                  {isConfirmed && (isFlightNode || isHotelNode) ? (
+                    <>
+                      <Check className="w-4 h-4 mr-1.5" /> Booked
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-1.5" /> Book {cfg.label}
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         )}
+
+        <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+          <DialogContent className="sm:max-w-lg bg-card border-border">
+            <DialogHeader>
+              <DialogTitle>Edit Attraction</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                  Name
+                </label>
+                <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                  {isManualAttraction ? "Subtitle" : "Location"}
+                </label>
+                <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                    Date
+                  </label>
+                  <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                    Time
+                  </label>
+                  <Input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                    Duration (min)
+                  </label>
+                  <Input type="number" min="0" value={editDuration} onChange={(e) => setEditDuration(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                    End Time
+                  </label>
+                  <Input type="time" value={editEndTime} onChange={(e) => handleEditEndTime(e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                    Cost
+                  </label>
+                  <Input type="number" min="0" value={editCost} onChange={(e) => setEditCost(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
+                  Google Maps Link
+                </label>
+                <Input value={editMapsLink} onChange={(e) => setEditMapsLink(e.target.value)} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setIsEditOpen(false)} disabled={isSavingAttraction}>
+                Cancel
+              </Button>
+              <Button variant="accent" onClick={handleSaveAttraction} disabled={isSavingAttraction}>
+                {isSavingAttraction ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </motion.div>
   );

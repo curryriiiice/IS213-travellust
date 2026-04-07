@@ -20,10 +20,13 @@ export interface ItineraryNode {
   duration?: string;
   cost: number;
   currency: string;
-  status: "confirmed" | "pending" | "conflict" | "delayed" | "cancelled";
+  status: "confirmed" | "pending" | "conflict" | "delayed" | "cancelled" | "added";
   details: Record<string, string>;
   conflictMessage?: string;
   delayMinutes?: number;
+  sourceType?: "catalog" | "manual";
+  mapsLink?: string;
+  rawVisitTime?: string;
 }
 
 export interface Trip {

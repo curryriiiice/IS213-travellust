@@ -13,6 +13,7 @@ import Profile from "./pages/Profile.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Booking from "./pages/Booking.tsx";
 import BookedTickets from "./pages/BookedTickets.tsx";
+import AddAttractionToTrip from "./pages/AddAttractionToTrip.tsx";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ const App = () => (
               <Route path="/details" element={<ItemDetail />} />
               <Route path="/booking" element={<Booking />} />
               <Route path="/bookings" element={<BookedTickets />} />
+              <Route path="/attractions/add-to-trip" element={<AddAttractionToTrip />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

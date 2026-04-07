@@ -12,9 +12,17 @@ interface TimelineNodeProps {
 
 export function TimelineNode({ node, isSelected, onClick, isFirst }: TimelineNodeProps) {
   const Icon = nodeIcons[node.type];
-  const borderColor = nodeColors[node.type];
-  const dotColor = nodeColorsDot[node.type];
+  const borderColor =
+    node.status === "pending"
+      ? "border-l-node-attraction"
+      : "border-l-node-hotel";
+  const dotColor =
+    node.status === "pending"
+      ? "bg-node-attraction"
+      : "bg-node-hotel";
   const hasConflict = node.status === "conflict" || node.status === "delayed";
+  const confirmedLabel =
+    node.type === "attraction" && node.sourceType === "catalog" ? "Booked" : "Confirmed";
 
   return (
     <motion.div
@@ -69,7 +77,12 @@ export function TimelineNode({ node, isSelected, onClick, isFirst }: TimelineNod
       <div className="flex items-center gap-1.5 mt-2">
         {node.status === "confirmed" && (
           <Badge variant="outline" className="text-node-hotel border-node-hotel/30">
-            Confirmed
+            {confirmedLabel}
+          </Badge>
+        )}
+        {node.status === "added" && (
+          <Badge variant="outline" className="text-node-attraction border-node-attraction/30">
+            Added
           </Badge>
         )}
         {node.status === "pending" && (

@@ -56,6 +56,29 @@ class BookedTicketsClient:
             raise HttpError(f"booked_tickets service error: {response.text}")
         return response.json()["data"]
 
+    def list_booked_tickets_by_user(self, user_id: str) -> list[dict]:
+        if not self.base_url:
+            raise HttpError("BOOKED_TICKETS_SERVICE_URL is not configured.")
+        response = requests.get(
+            f"{self.base_url}/api/users/{user_id}/booked_tickets",
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            raise HttpError(f"booked_tickets service error: {response.text}")
+        return response.json().get("data", [])
+
+    def update_booked_ticket(self, booked_ticket_id: str, payload: dict) -> dict:
+        if not self.base_url:
+            raise HttpError("BOOKED_TICKETS_SERVICE_URL is not configured.")
+        response = requests.put(
+            f"{self.base_url}/api/booked_tickets/{booked_ticket_id}",
+            json=payload,
+            timeout=self.timeout,
+        )
+        if response.status_code >= 400:
+            raise HttpError(f"booked_tickets service error: {response.text}")
+        return response.json()["data"]
+
 
 class TripsClient:
     def __init__(self, trip_url_template: str | None = None, timeout: float = 10.0):

@@ -158,6 +158,23 @@ def _build_failure_payload(
     }
 
 
+def _find_active_booked_tickets_for_attraction(
+    booked_tickets_client: BookedTicketsClient,
+    attraction_id: str,
+    user_ids: list[str],
+) -> list[dict]:
+    matches: list[dict] = []
+    for user_id in user_ids:
+        tickets = booked_tickets_client.list_booked_tickets_by_user(str(user_id))
+        for ticket in tickets:
+            if (
+                str(ticket.get("f_h_a_id")) == str(attraction_id)
+                and not ticket.get("cancelled", False)
+            ):
+                matches.append(ticket)
+    return matches
+
+
 def create_app(
     attractions_client: AttractionsClient | None = None,
     booked_tickets_client: BookedTicketsClient | None = None,
@@ -292,6 +309,63 @@ def create_app(
             ),
             HTTPStatus.CREATED,
         )
+
+    @app.post("/api/cancel-attractions")
+    def cancel_attraction_booking():
+        try:
+            payload = _validate_payload(request.get_json(silent=True))
+            trip_id = str(payload["trip_id"])
+            _validate_trip_membership(
+                trip_id,
+                [payload["paid_by"], *payload["user_id"]],
+                trips,
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), HTTPStatus.BAD_REQUEST
+        except HttpError as exc:
+            return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
+
+        try:
+            attraction = attractions.get_attraction(str(payload["attraction_id"]))
+            if attraction is None:
+                return jsonify({"error": "Attraction not found"}), HTTPStatus.NOT_FOUND
+
+            matched_tickets = _find_active_booked_tickets_for_attraction(
+                booked_tickets,
+                str(payload["attraction_id"]),
+                [str(user_id) for user_id in payload["user_id"]],
+            )
+
+            if not matched_tickets:
+                return (
+                    jsonify({"error": "No active attraction booking found to cancel."}),
+                    HTTPStatus.NOT_FOUND,
+                )
+
+            cancelled_records = []
+            for ticket in matched_tickets:
+                cancelled_records.append(
+                    booked_tickets.update_booked_ticket(
+                        str(ticket["booked_ticket_id"]),
+                        {"cancelled": True},
+                    )
+                )
+
+            return (
+                jsonify(
+                    {
+                        "data": {
+                            "resolved_trip_id": trip_id,
+                            "attraction_id": payload["attraction_id"],
+                            "cancelled_tickets": cancelled_records,
+                            "booking_confirmation": "Booking cancelled.",
+                        }
+                    }
+                ),
+                HTTPStatus.OK,
+            )
+        except HttpError as exc:
+            return jsonify({"error": str(exc)}), HTTPStatus.BAD_GATEWAY
 
     return app
 

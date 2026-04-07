@@ -71,7 +71,7 @@ class AttractionPlanService:
             overrides = {
                 k: v
                 for k, v in attraction_data.items()
-                if k in ["visit_time", "duration_minutes", "cost"]
+                if k in ["visit_time", "duration_minutes", "cost", "status"]
             }
             created_attraction = self.attractions_client.save_attraction_from_catalog(
                 trip_id=trip_id,
