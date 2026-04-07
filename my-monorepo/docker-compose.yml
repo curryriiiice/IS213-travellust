@@ -30,9 +30,14 @@ services:
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SUPABASE_URL=${NOTIFICATIONS_SUPABASE_URL}
+      - SUPABASE_KEY=${NOTIFICATIONS_SUPABASE_KEY}
       - FLASK_PORT=5000
     depends_on:
       - rabbitmq
+      - redis
     restart: unless-stopped
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
@@ -395,7 +400,7 @@ services:
       - .env
     environment:
       - FLIGHT_MANAGEMENT_HOST=flight-management
-      - FLIGHT_MANAGEMENT_PORT=5000
+      - FLIGHT_M ANAGEMENT_PORT=5000
       - HOTEL_MANAGEMENT_HOST=hotel-management
       - HOTEL_MANAGEMENT_PORT=5000
       - TRIPS_ATOMIC_HOST=trips_atomic

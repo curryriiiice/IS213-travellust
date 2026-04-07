@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BookingsProvider } from "@/contexts/BookingsContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import Landing from "./pages/Landing.tsx";
 import Index from "./pages/Index.tsx";
 import SearchResults from "./pages/SearchResults.tsx";
@@ -21,24 +22,26 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <BookingsProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/trips" element={<Index />} />
-              <Route path="/search" element={<SearchResults />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/details" element={<ItemDetail />} />
-              <Route path="/booking" element={<Booking />} />
-              <Route path="/bookings" element={<BookedTickets />} />
-              <Route path="/attractions/add-to-trip" element={<AddAttractionToTrip />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
+        <NotificationProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/trips" element={<Index />} />
+                <Route path="/search" element={<SearchResults />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/details" element={<ItemDetail />} />
+                <Route path="/booking" element={<Booking />} />
+                <Route path="/bookings" element={<BookedTickets />} />
+                <Route path="/attractions/add-to-trip" element={<AddAttractionToTrip />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </NotificationProvider>
       </BookingsProvider>
     </ThemeProvider>
   </QueryClientProvider>
