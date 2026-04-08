@@ -47,7 +47,7 @@ export async function login(
     },
     body: JSON.stringify({
       email,
-      password,
+      password_hash:password,
     }),
   });
 
