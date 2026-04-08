@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Header } from "@/components/Header";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +13,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ArrowLeft,
-  Compass,
   Plane,
   Building2,
   MapPin,
@@ -64,6 +63,19 @@ function convertToHotelOffer(node: ItineraryNode): HotelOffer {
 
 // Helper to convert ItineraryNode to FlightOffer when coming from booked tickets
 function convertToFlightOffer(node: ItineraryNode): FlightOffer {
+  // Helper function to format time from a time string
+  const formatTimeFromString = (timeStr: string): string => {
+    const match = timeStr.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (match) {
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12;
+      return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`;
+    }
+    return timeStr;
+  };
+
   return {
     id: node.id,
     airline: node.title,
@@ -73,8 +85,8 @@ function convertToFlightOffer(node: ItineraryNode): FlightOffer {
     originCity: node.details?.origin || "",
     destination: node.details?.destination || "",
     destinationCity: node.details?.destination || "",
-    departureTime: node.time,
-    departureTimeConverted: node.time,
+    departureTime: formatTimeFromString(node.time),
+    departureTimeConverted: formatTimeFromString(node.time),
     arrivalTime: "", // Calculated from departure + duration
     arrivalTimeConverted: "",
     arrivalDateTime: node.details?.datetime_arrival?.replace(" ", "T") || "", // Use API datetime if available
@@ -317,32 +329,22 @@ const ItemDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
-      <header className="h-12 border-b border-border flex items-center justify-between px-6 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Compass className="w-4 h-4 text-accent" />
-            <span className="text-sm font-medium tracking-tight">TravelLust</span>
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          {fromBookings ? (
-            <Badge className="bg-green-500/10 text-green-700 hover:bg-green-500/20">
-              <Check className="w-3 h-3 mr-1" />
-              Booked
-            </Badge>
-          ) : null}
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/trips")}>
-            My Trips
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/profile")}>
-            <User className="w-4 h-4" />
-          </Button>
-        </div>
-      </header>
+      <Header showBackButton showNotifications={false}>
+        {fromBookings && (
+          <Badge className="bg-green-500/10 text-green-700 hover:bg-green-500/20">
+            <Check className="w-3 h-3 mr-1" />
+            Booked
+          </Badge>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => navigate("/trips")}
+        >
+          My Trips
+        </Button>
+      </Header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
         {fromBookings && (
@@ -486,6 +488,62 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
   const cabin = flight?.cabin || "economy";
   const cabinClass = cabin?.replace?.(/_/g, " ") || cabin || "economy";
 
+  // Normalize duration format (convert "3H 35min" to "15h 35min", etc.)
+  const normalizeDuration = (durationStr: string): string => {
+    if (!durationStr) return '';
+
+    const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+    const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+    const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+    const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+    if (hours > 0 && minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else if (minutes > 0) {
+      return `${minutes}m`;
+    }
+    return durationStr;
+  };
+
+  // Airport code to timezone mapping (same as NodeDetail)
+  const getAirportTimezone = (airportCode: string): string => {
+    const timezoneMap: Record<string, string> = {
+      "SIN": "Asia/Singapore",
+      "JFK": "America/New_York",
+      "LGA": "America/New_York",
+      "EWR": "America/New_York",
+      "LHR": "Europe/London",
+      "CDG": "Europe/Paris",
+      "FRA": "Europe/Berlin",
+      "AMS": "Europe/Amsterdam",
+      "HKG": "Asia/Hong_Kong",
+      "NRT": "Asia/Tokyo",
+      "HND": "Asia/Tokyo",
+      "SYD": "Australia/Sydney",
+      "MEL": "Australia/Melbourne",
+      "DXB": "Asia/Dubai",
+      "BKK": "Asia/Bangkok",
+      "ICN": "Asia/Seoul",
+      "PEK": "Asia/Shanghai",
+      "PVG": "Asia/Shanghai",
+      "SFO": "America/Los_Angeles",
+      "LAX": "America/Los_Angeles",
+      "SEA": "America/Los_Angeles",
+      "ORD": "America/Chicago",
+      "DFW": "America/Chicago",
+      "MIA": "America/New_York",
+      "DEN": "America/Denver",
+      "ATL": "America/New_York",
+    };
+    return timezoneMap[airportCode.toUpperCase()] || "UTC";
+  };
+
+  const originTimezone = getAirportTimezone(flight.origin);
+  const destinationTimezone = getAirportTimezone(flight.destination);
+
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       {/* Hero */}
@@ -507,12 +565,15 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
         <div className="px-6 py-6">
           <div className="flex items-center justify-between mb-6">
             <div className="text-center">
-              <p className="text-2xl font-mono tabular-nums font-medium">{flight.departureTime}</p>
+              <p className="text-2xl font-mono tabular-nums font-medium">
+                {flight.departureTimeConverted || flight.departureTime}
+              </p>
               <p className="text-sm text-muted-foreground font-mono">{flight.origin}</p>
               <p className="text-xs text-muted-foreground">{flight.originCity}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{originTimezone}</p>
             </div>
             <div className="flex-1 flex flex-col items-center gap-1 px-6">
-              <span className="text-xs text-muted-foreground font-mono">{flight.duration}</span>
+              <span className="text-xs text-muted-foreground font-mono">{normalizeDuration(flight.duration)}</span>
               <div className="w-full flex items-center gap-1">
                 <div className="flex-1 h-px bg-border" />
                 <Plane className="w-3 h-3 text-muted-foreground" />
@@ -522,9 +583,12 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
               </span>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-mono tabular-nums font-medium">{flight.arrivalTime}</p>
+              <p className="text-2xl font-mono tabular-nums font-medium">
+                {flight.arrivalTimeConverted || flight.arrivalTime}
+              </p>
               <p className="text-sm text-muted-foreground font-mono">{flight.destination}</p>
               <p className="text-xs text-muted-foreground">{flight.destinationCity}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{destinationTimezone}</p>
             </div>
           </div>
 
@@ -793,7 +857,23 @@ function NodeDetail({
 
   const formatDateTime = (dateTimeStr: string, airportCode: string): string => {
     try {
-      const date = new Date(dateTimeStr);
+      let date: Date;
+      // Handle different datetime formats
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
       const timezone = getAirportTimezone(airportCode);
       return new Intl.DateTimeFormat("en-US", {
         timeZone: timezone,
@@ -810,9 +890,57 @@ function NodeDetail({
     }
   };
 
+  const formatDateTimeNoTimezone = (dateTimeStr: string): string => {
+    try {
+      let date: Date;
+      // Handle different datetime formats
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
+      return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).format(date).replace(", ", " at ");
+    } catch {
+      return dateTimeStr;
+    }
+  };
+
   const formatDateOnly = (dateTimeStr: string): string => {
     try {
-      const date = new Date(dateTimeStr);
+      let date: Date;
+      // Handle different datetime formats
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
       return new Intl.DateTimeFormat("en-US", {
         year: "numeric",
         month: "short",
@@ -822,6 +950,247 @@ function NodeDetail({
       return dateTimeStr;
     }
   };
+
+  // Format time from datetime string, respecting timezone
+  const formatTimeFromDateTime = (dateTimeStr: string, airportCode?: string): string => {
+    try {
+      // Handle different datetime formats
+      let date: Date;
+
+      // Try parsing as ISO format first
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
+      const timezone = airportCode ? getAirportTimezone(airportCode) : undefined;
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(date);
+    } catch {
+      return dateTimeStr;
+    }
+  };
+
+  // Parse time to 24-hour format for calculations (handles both 12-hour and 24-hour formats)
+  const parseTimeTo24Hour = (timeStr: string): { hours: number; minutes: number } => {
+    // Try to match 12-hour format first (e.g., "05:05 PM", "5:05 PM", "05:05 PM")
+    let match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)\b/i);
+
+    if (match) {
+      let hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const meridiem = match[3]?.toUpperCase();
+
+      if (meridiem === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (meridiem === 'AM' && hours === 12) {
+        hours = 0;
+      }
+
+      return { hours, minutes };
+    }
+
+    // If no AM/PM found, try 24-hour format (e.g., "17:05", "09:05")
+    match = timeStr.match(/(\d{1,2}):(\d{2})/);
+    if (match) {
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+
+      if (!Number.isNaN(hours) && !Number.isNaN(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+        return { hours, minutes };
+      }
+    }
+
+    return { hours: 0, minutes: 0 };
+  };
+
+  // Format 24-hour time to 12-hour time with AM/PM
+  const format24HourTo12Hour = (hours: number, minutes: number): string => {
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${String(displayHours)}:${String(minutes).padStart(2, '0')} ${period}`;
+  };
+
+  // Add minutes to a formatted time string (handles 12-hour format)
+  const addMinutesToFormattedTime = (timeStr: string, minutesToAdd: number): string => {
+    const { hours, minutes } = parseTimeTo24Hour(timeStr);
+    const totalMinutes = hours * 60 + minutes + minutesToAdd;
+    const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+    const nextHours = Math.floor(normalized / 60);
+    const nextMinutes = normalized % 60;
+    return format24HourTo12Hour(nextHours, nextMinutes);
+  };
+
+  // Normalize duration format (convert "3H 35min" to "15h 35min", etc.)
+  const normalizeDuration = (durationStr: string): string => {
+    if (!durationStr) return '';
+
+    // Handle various formats: "3H 35min", "15h 35min", "15h", "35min", etc.
+    const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+    const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+    const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+    const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+    // Format consistently as "Xh Ym" or "Xh" or "Ym"
+    if (hours > 0 && minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else if (minutes > 0) {
+      return `${minutes}m`;
+    }
+    return durationStr;
+  };
+
+  // Calculate duration from departure and arrival datetimes (for flights)
+  const calculateDurationFromDatetimes = (): { hours: number; minutes: number; formatted: string } => {
+    if (!node.details.datetime_departure || !node.details.datetime_arrival) {
+      // Fall back to existing duration if datetimes not available
+      const durationStr = node.duration || "";
+      const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+      const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+      const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+      const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+      return {
+        hours,
+        minutes,
+        formatted: hours > 0 && minutes > 0 ? `${hours}h ${minutes}m` : hours > 0 ? `${hours}h` : `${minutes}m`
+      };
+    }
+
+    try {
+      const departure = new Date(node.details.datetime_departure.replace(' ', 'T'));
+      const arrival = new Date(node.details.datetime_arrival.replace(' ', 'T'));
+      const diffMs = departure.getTime() - arrival.getTime();
+      const diffMinutes = Math.floor(Math.abs(diffMs) / (1000 * 60));
+
+      const hours = Math.floor(diffMinutes / 60);
+      const minutes = diffMinutes % 60;
+
+      return {
+        hours,
+        minutes,
+        formatted: hours > 0 && minutes > 0 ? `${hours}h ${minutes}m` : hours > 0 ? `${hours}h` : `${minutes}m`
+      };
+    } catch {
+      // Fallback to existing duration
+      const durationStr = node.duration || "";
+      const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+      const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+      const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+      const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+      return {
+        hours,
+        minutes,
+        formatted: hours > 0 && minutes > 0 ? `${hours}h ${minutes}m` : hours > 0 ? `${hours}h` : `${minutes}m`
+      };
+    }
+  };
+
+  // Get the primary datetime to display for a node
+  const getPrimaryDateTime = (): { date: string; time: string; timezone?: string } => {
+    if (isFlightNode) {
+      // For flights, use departure datetime with origin timezone
+      const departureDateTime = node.details.datetime_departure || `${node.date}T${node.time}`;
+      const originAirport = node.details.origin || '';
+      const timezone = getAirportTimezone(originAirport);
+
+      let formattedTime: string;
+      try {
+        if (node.details.datetime_departure) {
+          // Use the same formatDateTime function as in details section for consistency
+          const fullFormatted = formatDateTime(departureDateTime, originAirport);
+          // Extract just the time part (e.g., "Apr 10, 2025, 5:05 PM SGT" -> "5:05 PM")
+          const timeMatch = fullFormatted.match(/(\d{1,2}:\d{2}\s*[AP]M)/);
+          formattedTime = timeMatch ? timeMatch[1] : fullFormatted;
+        } else {
+          const { hours, minutes } = parseTimeTo24Hour(node.time);
+          if (hours > 0 || minutes > 0) {
+            formattedTime = format24HourTo12Hour(hours, minutes);
+          } else {
+            formattedTime = node.time;
+          }
+        }
+      } catch {
+        const { hours, minutes } = parseTimeTo24Hour(node.time);
+        if (hours > 0 || minutes > 0) {
+          formattedTime = format24HourTo12Hour(hours, minutes);
+        } else {
+          formattedTime = node.time;
+        }
+      }
+
+      return {
+        date: formatDateOnly(departureDateTime),
+        time: formattedTime,
+        timezone: timezone,
+      };
+    } else if (isHotelNode) {
+      // For hotels, use check-in datetime
+      const checkInDateTime = node.details.datetime_check_in || `${node.date}T${node.time}`;
+      let formattedTime: string;
+      try {
+        if (node.details.datetime_check_in) {
+          formattedTime = formatTimeFromDateTime(checkInDateTime);
+        } else {
+          const { hours, minutes } = parseTimeTo24Hour(node.time);
+          if (hours > 0 || minutes > 0) {
+            formattedTime = format24HourTo12Hour(hours, minutes);
+          } else {
+            formattedTime = node.time;
+          }
+        }
+      } catch {
+        formattedTime = node.time;
+      }
+
+      return {
+        date: formatDateOnly(checkInDateTime),
+        time: formattedTime,
+      };
+    } else {
+      // For attractions and others, use the node's date and time
+      const visitDateTime = `${node.date}T${node.time}`;
+      let formattedTime: string;
+      try {
+        const { hours, minutes } = parseTimeTo24Hour(node.time);
+        if (hours > 0 || minutes > 0) {
+          formattedTime = format24HourTo12Hour(hours, minutes);
+        } else {
+          formattedTime = node.time;
+        }
+      } catch {
+        formattedTime = node.time;
+      }
+
+      return {
+        date: formatDateOnly(visitDateTime),
+        time: formattedTime,
+      };
+    }
+  };
+
+  const primaryDateTime = getPrimaryDateTime();
+  const calculatedDuration = calculateDurationFromDatetimes();
 
   const fieldLabelMap: Record<string, string> = {
     // Flight fields
@@ -837,7 +1206,7 @@ function NodeDetail({
     amenities: "Amenities",
     photos: "Photos",
     overall_rating: "Overall Rating",
-    datetime_check_in: "Check In Date",
+    datetime_check_in: "Check In",
     datetime_check_out: "Check Out Date",
     nights: "Nights",
     rate_per_night: "Nightly Rate",
@@ -1090,16 +1459,23 @@ function NodeDetail({
           {node.subtitle && <p className="text-sm text-muted-foreground mt-0.5">{node.subtitle}</p>}
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 py-4 border-t border-border">
-            <InfoBlock icon={Clock} label="Date" value={new Date(node.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} />
-            <InfoBlock icon={Clock} label={isHotelNode ? "Check In Time" : "Time"} value={node.time} />
+            <InfoBlock icon={Clock} label="Date" value={primaryDateTime.date} />
+            <InfoBlock
+              icon={Clock}
+              label={isHotelNode ? "Check In Time" : "Time"}
+              value={`${primaryDateTime.time}${primaryDateTime.timezone ? ` (${primaryDateTime.timezone})` : ''}`}
+            />
             {isAttractionNode && (
               <InfoBlock
                 icon={Clock}
                 label="End Time"
-                value={addMinutesToTime(node.time, durationMinutesFromNode(node))}
+                value={addMinutesToFormattedTime(primaryDateTime.time, durationMinutesFromNode(node))}
               />
             )}
-            {node.duration && <InfoBlock icon={Clock} label="Duration" value={node.duration} />}
+            {isFlightNode && calculatedDuration.formatted && (
+              <InfoBlock icon={Clock} label="Duration" value={calculatedDuration.formatted} />
+            )}
+            {!isFlightNode && node.duration && <InfoBlock icon={Clock} label="Duration" value={normalizeDuration(node.duration)} />}
             <InfoBlock
               icon={Shield}
               label="Status"
@@ -1144,17 +1520,20 @@ function NodeDetail({
                       ) : key === "visit_time" ? (
                         <span>{node.time}</span>
                       ) : key === "duration_minutes" ? (
-                        <span>{node.duration || `${val}m`}</span>
+                        <span>{isFlightNode ? calculatedDuration.formatted : (node.duration || `${val}m`)}</span>
                       ) : key === "rate_per_night" ? (
                         <span>${val as string}</span>
                       ) : key === "datetime_check_in" || key === "datetime_check_out" ? (
-                        <span>{formatDateOnly(val as string)}</span>
-                      ) : key === "datetime_departure" || key === "datetime_arrival" ? (
+                        <span>{formatDateTimeNoTimezone(val as string)}</span>
+                      ) : key === "datetime_departure" ? (
                         <div className="flex flex-col gap-1 mt-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">Origin ({node.details.origin || 'N/A'}):</span>
                             <span>{formatDateTime(val as string, node.details.origin || 'UTC')}</span>
                           </div>
+                        </div>
+                      ) : key === "datetime_arrival" ? (
+                        <div className="flex flex-col gap-1 mt-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">Destination ({node.details.destination || 'N/A'}):</span>
                             <span>{formatDateTime(val as string, node.details.destination || 'UTC')}</span>

@@ -1,4 +1,5 @@
 import type { ItineraryNode } from "@/types/trip";
+import { parseLocalParts } from "@/lib/date-utils";
 
 /**
  * Raw flight response from flight-management composite service
@@ -33,27 +34,6 @@ interface FlightResponse {
 }
 
 /**
- * Safely parse datetime string, handling various formats
- */
-function parseDateTime(dateTimeStr: string): Date {
-  // Try parsing as-is
-  let date = new Date(dateTimeStr);
-
-  // If invalid or NaN, try appending 'Z' for UTC
-  if (isNaN(date.getTime())) {
-    date = new Date(`${dateTimeStr}Z`);
-  }
-
-  // If still invalid, return current date as fallback
-  if (isNaN(date.getTime())) {
-    console.warn(`Failed to parse datetime: ${dateTimeStr}`);
-    return new Date();
-  }
-
-  return date;
-}
-
-/**
  * Format duration in minutes to human-readable format (e.g., "2h 30m")
  */
 function formatDuration(durationMinutes: number): string {
@@ -83,23 +63,16 @@ function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode | 
     return null;
   }
 
-  const departureDate = parseDateTime(raw.datetime_departure);
-  const arrivalDate = parseDateTime(raw.datetime_arrival);
+  const { date, time } = parseLocalParts(raw.datetime_departure);
+  const { date: arrivalDateStr, time: arrivalTimeStr } = parseLocalParts(raw.datetime_arrival);
 
-  console.log("Flight mapping:", {
-    departure: raw.datetime_departure,
-    arrival: raw.datetime_arrival,
-    parsedDeparture: departureDate.toISOString(),
-    parsedArrival: arrivalDate.toISOString(),
-    deleted: raw.deleted,
-  });
-
-  // Extract date (YYYY-MM-DD) and time (HH:mm)
-  const date = departureDate.toISOString().split("T")[0];
-  const time = departureDate.toTimeString().slice(0, 5);
+  // For duration calculation, we can still use native Date parsing since we only care about the delta
+  // and the backend provides consistent offsets.
+  const depDate = new Date(raw.datetime_departure);
+  const arrDate = new Date(raw.datetime_arrival);
 
   // Calculate duration in minutes
-  const durationMs = arrivalDate.getTime() - departureDate.getTime();
+  const durationMs = arrDate.getTime() - depDate.getTime();
   const durationMinutes = Math.round(durationMs / (1000 * 60));
 
   // Handle negative duration (arrival before departure) - might indicate crossing timezone

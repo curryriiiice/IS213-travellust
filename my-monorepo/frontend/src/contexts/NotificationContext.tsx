@@ -36,11 +36,10 @@ const NotificationContext = createContext<NotificationContextType>({
 const COLLAB_URL = "http://localhost:5010";
 const NOTIFICATIONS_API_URL = "/api/notifications";
 
-// Hardcoded user ID - same as used in other parts of the app
 import { getCurrentUserId } from "@/lib/auth";
-const CURRENT_USER_ID = getCurrentUserId();
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+  const [currentUserId, setCurrentUserId] = useState<string>(() => getCurrentUserId());
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,9 +50,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const fetchNotifications = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${NOTIFICATIONS_API_URL}?user_id=${CURRENT_USER_ID}`);
+      const response = await fetch(`${NOTIFICATIONS_API_URL}?user_id=${currentUserId}`);
       if (!response.ok) throw new Error("Failed to fetch notifications");
-      
+
       const data = await response.json();
       if (data.success) {
         setNotifications(data.data || []);
@@ -64,7 +63,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentUserId]);
 
   // Mark single notification as read
   const markAsRead = useCallback(async (id: string) => {
@@ -87,10 +86,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
     try {
-      const response = await fetch(`${NOTIFICATIONS_API_URL}/read-all?user_id=${CURRENT_USER_ID}`, {
+      const response = await fetch(`${NOTIFICATIONS_API_URL}/read-all?user_id=${currentUserId}`, {
         method: "PATCH",
       });
-      
+
       if (response.ok) {
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
         setUnreadCount(0);
@@ -98,7 +97,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("[NotificationContext] Failed to mark all as read:", error);
     }
-  }, []);
+  }, [currentUserId]);
 
   // Connect to Socket.IO for real-time notifications
   useEffect(() => {
@@ -107,7 +106,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     // Connect to Socket.IO (notification-only connection, no trip_id)
     const newSocket = io(COLLAB_URL, {
-      query: { user_id: CURRENT_USER_ID },
+      query: { user_id: currentUserId },
       transports: ["websocket", "polling"],
     });
 
@@ -122,6 +121,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     newSocket.on("notification", (notification: Notification) => {
       console.log("[NotificationContext] Received notification:", notification);
+
+      // CRITICAL: Only accept notifications intended for the current user
+      if (notification.user_id !== currentUserId) {
+        console.log("[NotificationContext] Ignoring notification for different user:", {
+          notificationUserId: notification.user_id,
+          currentUserId,
+        });
+        return;
+      }
+
+      console.log("[NotificationContext] Adding notification for current user:", notification);
       // Add new notification to the top of the list
       setNotifications((prev) => [notification, ...prev]);
       setUnreadCount((prev) => prev + 1);
@@ -147,7 +157,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       newSocket.disconnect();
       setSocket(null);
     };
-  }, [fetchNotifications]);
+  }, [fetchNotifications, currentUserId]);
 
   return (
     <NotificationContext.Provider

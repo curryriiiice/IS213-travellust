@@ -3,26 +3,20 @@ import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Header } from "@/components/Header";
 import {
   Plane,
   Building2,
-  Compass,
-  ArrowLeft,
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
   Search,
-  Leaf,
   Star,
   MapPin,
   Coffee,
-  Wifi,
-  Dumbbell,
-  UtensilsCrossed,
   Plus,
   Check,
   X,
-  User,
   Loader2,
 } from "lucide-react";
 import { searchFlights, airports, type FlightOffer } from "@/data/flightData";
@@ -350,33 +344,16 @@ const SearchResults = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
-      <header className="h-12 border-b border-border flex items-center justify-between px-6 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/")}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div className="flex items-center gap-2">
-          <button onClick={() => navigate("/")} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Compass className="w-4 h-4 text-accent" />
-            <span className="text-sm font-medium tracking-tight">TravelLust</span>
-          </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/trips")}>
-            My Trips
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => navigate("/profile")}
-          >
-            <User className="w-4 h-4" />
-          </Button>
-        </div>
-      </header>
+      <Header showBackButton onBack={() => navigate("/")} showNotifications={false}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => navigate("/trips")}
+        >
+          My Trips
+        </Button>
+      </Header>
 
       <div className="max-w-6xl mx-auto flex gap-0 min-h-[calc(100vh-48px)]">
         {/* Left sidebar — search form */}

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { TripCard } from '@/components/TripCard';
 import { TripCommandCenter } from '@/components/TripCommandCenter';
+import { Header } from '@/components/Header';
 import { getUserTrips, createTrip, updateTripMembers } from '@/api/trip';
 import { fetchAllClients, type ExternalClient } from '@/api/collaborator';
 import { getInitials, getColorFromUuid } from '@/lib/collaborator-utils';
@@ -16,13 +17,12 @@ import {
 } from '@/components/ui/popover';
 import {
   Plus,
-  Compass,
   UserPlus,
   UserMinus,
   CalendarIcon,
   DollarSign,
   MapPinIcon,
-  User,
+  RefreshCw,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from '@/hooks/use-toast';
@@ -47,19 +47,23 @@ const Index = () => {
 
   const CURRENT_USER_ID = getCurrentUserId();
 
-  useEffect(() => {
+  const fetchTrips = useCallback(async () => {
     setIsLoading(true);
     setFetchError(null);
-    getUserTrips(CURRENT_USER_ID)
-      .then((fetched) => {
-        setTrips(fetched);
-      })
-      .catch((err) => {
-        console.error('Failed to load trips:', err);
-        setFetchError('Could not load your trips. Please try again later.');
-      })
-      .finally(() => setIsLoading(false));
-  }, []);
+    try {
+      const fetched = await getUserTrips(CURRENT_USER_ID);
+      setTrips(fetched);
+    } catch (err) {
+      console.error('Failed to load trips:', err);
+      setFetchError('Could not load your trips. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [CURRENT_USER_ID]);
+
+  useEffect(() => {
+    fetchTrips();
+  }, [fetchTrips]);
 
   // New trip form state
   const [tripName, setTripName] = useState('');
@@ -286,7 +290,10 @@ const Index = () => {
     return (
       <TripCommandCenter
         trip={liveTrip}
-        onBack={() => setSelectedTrip(null)}
+        onBack={() => {
+          setSelectedTrip(null);
+          fetchTrips(); // Refresh trips when returning to main page
+        }}
         onUpdateTrip={(updated) =>
           setTrips((prev) =>
             prev.map((t) => (t.id === updated.id ? updated : t)),
@@ -298,34 +305,26 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="h-12 border-b border-border flex items-center justify-between px-6 bg-card">
-        <button
-          onClick={() => navigate('/')}
-          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+      <Header>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => fetchTrips()}
+          disabled={isLoading}
+          title="Refresh trips"
         >
-          <Compass className="w-4 h-4 text-accent" />
-          <span className="text-sm font-medium tracking-tight">TravelLust</span>
-        </button>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="accent"
-            size="sm"
-            onClick={() => navigate('/search?type=flights')}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Search
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => navigate('/profile')}
-          >
-            <User className="w-4 h-4" />
-          </Button>
-        </div>
-      </header>
+          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+        </Button>
+        <Button
+          variant="accent"
+          size="sm"
+          onClick={() => navigate('/search?type=flights')}
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Search
+        </Button>
+      </Header>
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <motion.div

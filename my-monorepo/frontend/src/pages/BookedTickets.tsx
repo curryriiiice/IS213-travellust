@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useBookings, type BookingRecord } from "@/contexts/BookingsContext";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Header } from "@/components/Header";
 import { getUserBookedTickets } from "@/api/booking";
 import { fetchFlightById } from "@/api/flight";
 import { fetchHotelById } from "@/api/hotel";
@@ -12,15 +13,12 @@ import { fetchTripById } from "@/api/trip";
 import type { Trip } from "@/types/trip";
 import { Loader2 } from "lucide-react";
 import {
-  ArrowLeft,
-  Compass,
   Plane,
   Building2,
   MapPin,
   Ticket,
   Calendar,
   Users,
-  User,
   RefreshCw,
 } from "lucide-react";
 import { getCurrentUserId } from "@/lib/auth";
@@ -242,24 +240,24 @@ const BookedTickets = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="h-12 border-b border-border flex items-center justify-between px-6 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <Compass className="w-4 h-4 text-accent" />
-          <span className="text-sm font-medium tracking-tight">TravelLust</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/")}>
-            Home
-          </Button>
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/trips")}>
-            My Trips
-          </Button>
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/profile")}>
-            <User className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </header>
+      <Header showNotifications={false}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => navigate("/")}
+        >
+          Home
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => navigate("/trips")}
+        >
+          My Trips
+        </Button>
+      </Header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">

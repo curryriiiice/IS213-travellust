@@ -1,4 +1,5 @@
 import type { ItineraryNode } from "@/types/trip";
+import { parseLocalParts } from "@/lib/date-utils";
 import type { AttractionOffer } from "@/data/attractionData";
 
 /**
@@ -34,24 +35,18 @@ interface AttractionsResponse {
 }
 
 function extractDateTimeParts(rawDateTime?: string, fallback?: string): { date: string; time: string } {
-  const value = rawDateTime || fallback || new Date().toISOString();
-  const match = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
-
-  if (match) {
-    return { date: match[1], time: match[2] };
-  }
-
-  const parsed = new Date(value);
-  if (!isNaN(parsed.getTime())) {
+  const value = rawDateTime || fallback;
+  if (!value) {
     return {
-      date: parsed.toISOString().slice(0, 10),
-      time: parsed.toTimeString().slice(0, 5),
+      date: new Date().toISOString().split("T")[0],
+      time: "09:00",
     };
   }
 
+  const { date, time } = parseLocalParts(value);
   return {
-    date: new Date().toISOString().slice(0, 10),
-    time: "09:00",
+    date: date || new Date().toISOString().split("T")[0],
+    time: time || "09:00",
   };
 }
 
