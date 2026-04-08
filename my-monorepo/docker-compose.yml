@@ -32,8 +32,8 @@ services:
       - RABBITMQ_PORT=5672
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - SUPABASE_URL=${NOTIFICATIONS_SUPABASE_URL}
-      - SUPABASE_KEY=${NOTIFICATIONS_SUPABASE_KEY}
+      - SUPABASE_URL=${TRIPS_SUPABASE_URL}
+      - SUPABASE_KEY=${TRIPS_SUPABASE_KEY}
       - FLASK_PORT=5000
     depends_on:
       - rabbitmq
@@ -114,7 +114,7 @@ services:
       - FLASK_PORT=5000
     restart: unless-stopped
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:5000/health']
+      test: ['CMD', 'curl', '-f', 'http://localhost:5000/api/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -293,6 +293,7 @@ services:
       - booked_tickets
       - rabbitmq
       - trips_atomic
+      - notifications
 
   book-hotels:
     build:
@@ -328,6 +329,7 @@ services:
       start_period: 40s
     depends_on:
       - rabbitmq
+      - notifications
       - trips_atomic
       - hotel-management
       - booked_tickets
@@ -361,6 +363,7 @@ services:
       start_period: 40s
     depends_on:
       - rabbitmq
+      - notifications
       - trips_atomic
       - flight-management
       - booked_tickets
@@ -400,7 +403,7 @@ services:
       - .env
     environment:
       - FLIGHT_MANAGEMENT_HOST=flight-management
-      - FLIGHT_M ANAGEMENT_PORT=5000
+      - FLIGHT_MANAGEMENT_PORT=5000
       - HOTEL_MANAGEMENT_HOST=hotel-management
       - HOTEL_MANAGEMENT_PORT=5000
       - TRIPS_ATOMIC_HOST=trips_atomic
@@ -415,6 +418,8 @@ services:
       test:
         [
           'CMD',
+          'uv',
+          'run',
           'python',
           '-c',
           "import requests; requests.get('http://localhost:5000/api/health')",

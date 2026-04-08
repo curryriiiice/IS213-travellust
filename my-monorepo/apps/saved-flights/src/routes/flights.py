@@ -19,9 +19,11 @@ def create_flight():
     """
     try:
         data = request.get_json()
+        logger.info(f"📥 Received flight data in saved-flights route: {data}")
+        logger.info(f"🔍 datetime_departure: {data.get('datetime_departure')}, datetime_arrival: {data.get('datetime_arrival')}")
         print(f"📥 Received flight data in saved-flights route: {data}")
         print(f"🔍 Origin in request: {data.get('origin')}, Destination in request: {data.get('destination')}")
-        logger.info(f"Creating flight: {data['flight_number']} for trip {data['trip_id']}")
+        logger.info(f"Creating flight: {data.get('flight_number')} for trip {data.get('trip_id')}")
         validate_flight_data(data)
 
         service = FlightService()

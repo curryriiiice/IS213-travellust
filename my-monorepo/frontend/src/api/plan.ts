@@ -57,7 +57,8 @@ export async function saveFlight(
   searchDate: string // YYYY-MM-DD
 ): Promise<{ flight_id: string }> {
   const datetimeDeparture = toISO(searchDate, flight.departureTime);
-  const datetimeArrival = arrivalISO(datetimeDeparture, flight.durationMinutes);
+  // Use the arrivalDateTime from the API response which has the correct date
+  const datetimeArrival = flight.arrivalDateTime || arrivalISO(datetimeDeparture, flight.durationMinutes);
 
   const body = {
     trip_id: tripId,

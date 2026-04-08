@@ -46,6 +46,7 @@ class SupabaseFlightClient:
             'co2_kg': flight_data.get('co2_kg'),
             'origin': flight_data.get('origin'),
             'destination': flight_data.get('destination'),
+            'deleted': flight_data.get('deleted', False),
             'created_at': safe_isoformat(flight_data.get('created_at'))
         }
 
@@ -91,9 +92,9 @@ class SupabaseFlightClient:
             raise Exception(f"Error creating flight: {str(e)}")
 
     def get_flight(self, flight_id: str) -> Dict[str, Any]:
-        """Get a flight by UUID ID"""
+        """Get a flight by UUID ID (excludes soft-deleted flights)"""
         try:
-            result = self.client.table('flights').select('*').eq('flight_id', flight_id).execute()
+            result = self.client.table('flights').select('*').eq('flight_id', flight_id).eq('deleted', 'false').execute()
 
             if not result.data or len(result.data) == 0:
                 raise Exception(f"Flight with id {flight_id} not found")
@@ -106,9 +107,9 @@ class SupabaseFlightClient:
             raise Exception(f"Error getting flight: {str(e)}")
 
     def get_flights_by_trip(self, trip_id: str) -> List[Dict[str, Any]]:
-        """Get all flights for a specific trip by UUID"""
+        """Get all non-deleted flights for a specific trip by UUID"""
         try:
-            result = self.client.table('flights').select('*').eq('trip_id', trip_id).execute()
+            result = self.client.table('flights').select('*').eq('trip_id', trip_id).eq('deleted', 'false').execute()
 
             return [self._to_dict(flight) for flight in result.data]
 
@@ -116,9 +117,9 @@ class SupabaseFlightClient:
             raise Exception(f"Error getting flights by trip: {str(e)}")
 
     def get_all_flights(self) -> List[Dict[str, Any]]:
-        """Get all flights"""
+        """Get all non-deleted flights"""
         try:
-            result = self.client.table('flights').select('*').execute()
+            result = self.client.table('flights').select('*').eq('deleted', 'false').execute()
 
             return [self._to_dict(flight) for flight in result.data]
 
