@@ -1,4 +1,4 @@
-import type { Trip } from "@/types/trip";
+import type { Trip } from '@/types/trip';
 
 /**
  * The shape of a raw trip record coming back from trips_atomic.
@@ -25,10 +25,10 @@ interface RawTrip {
 /** Map a raw Supabase trip record to the frontend Trip shape. */
 function mapRawTrip(raw: RawTrip): Trip {
   // Build a readable destination from locations array
-  const destination = raw.locations?.join(", ") || "Unknown destination";
+  const destination = raw.locations?.join(', ') || 'Unknown destination';
 
-  const startDate = raw.start_date || raw.trip_date || "";
-  const endDate = raw.end_date || raw.start_date || raw.trip_date || "";
+  const startDate = raw.start_date || raw.trip_date || '';
+  const endDate = raw.end_date || raw.start_date || raw.trip_date || '';
 
   return {
     id: raw.id,
@@ -38,9 +38,9 @@ function mapRawTrip(raw: RawTrip): Trip {
     endDate,
     budget: raw.budget ?? raw.calculated_cost ?? 0,
     spent: 0,
-    currency: "SGD",
-    collaborators: [],          // member_ids are UUIDs; we don't have profiles to map yet
-    nodes: [],                  // Nodes are separate – not returned by this endpoint
+    currency: 'SGD',
+    collaborators: [], // member_ids are UUIDs; we don't have profiles to map yet
+    nodes: [], // Nodes are separate – not returned by this endpoint
     flight_ids: raw.flight_ids || null,
     hotel_ids: raw.hotel_ids || null,
     attraction_ids: raw.attraction_ids || null,
@@ -58,18 +58,26 @@ export async function createTrip(
     endDate?: string;
     budget: number;
     currency: string;
-  }
+    memberIds?: string[];
+  },
 ): Promise<Trip> {
-  const res = await fetch("/api/trips-atomic/trips", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  // Use provided memberIds if available, otherwise default to just the creator
+  const memberIds = data.memberIds?.length ? data.memberIds : [userId];
+  // Ensure the creator is always included
+  if (!memberIds.includes(userId)) {
+    memberIds.unshift(userId);
+  }
+
+  const res = await fetch('/api/trips-atomic/trips', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       trip_name: data.name,
       locations: [data.destination],
       start_date: data.startDate,
       end_date: data.endDate || data.startDate,
       budget: data.budget,
-      member_ids: [userId],
+      member_ids: memberIds,
     }),
   });
 
@@ -121,4 +129,26 @@ export async function fetchTripById(tripId: string): Promise<Trip | null> {
     console.error(`Error fetching trip ${tripId}:`, error);
     return null;
   }
+}
+
+/** Update a trip's member_ids array. */
+export async function updateTripMembers(
+  tripId: string,
+  memberIds: string[],
+): Promise<Trip> {
+  const res = await fetch(`/api/trips-atomic/trips/${tripId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ member_ids: memberIds }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      err.error ?? `Failed to update trip members (${res.status})`,
+    );
+  }
+
+  const json = await res.json();
+  return mapRawTrip(json.data);
 }
