@@ -354,8 +354,8 @@ const Index = () => {
               <p className="text-sm text-muted-foreground">
                 You have no trips at the moment. The world is your oyster, go wild!
               </p>
-              <Button variant="outline" size="sm" onClick={() => navigate('/search?type=flights')}>
-                <Plus className="w-3.5 h-3.5 mr-1" /> Search Flights
+              <Button variant="outline" size="sm" onClick={() => setNewTripOpen(true)}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Create Trip
               </Button>
             </motion.div>
           )}

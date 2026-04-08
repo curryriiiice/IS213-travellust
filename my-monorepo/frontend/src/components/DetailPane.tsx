@@ -201,6 +201,9 @@ function NodeDetailInline({
       } else if (isHotelNode) {
         await bookHotel(tripId, MAIN_USER_ID, selectedUserIds, node.id);
         toast({ title: "🏨 Hotel Booking Successful", description: `Booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}.` });
+      } else if (isAttractionNode) {
+        await bookAttraction(tripId, MAIN_USER_ID, selectedUserIds, node.id);
+        toast({ title: "🎪 Attraction Booking Successful", description: `Booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}.` });
       }
       setIsPassengerModalOpen(false);
       onNodeBooked?.(node.id);
@@ -212,19 +215,6 @@ function NodeDetailInline({
   };
 
   // --- Attraction booking ---
-  const handleBookAttraction = async () => {
-    setIsBookingAttraction(true);
-    try {
-      await bookAttraction(tripId, MAIN_USER_ID, node.id);
-      toast({ title: "Attraction booked", description: `${node.title} is now booked.` });
-      onNodeBooked?.(node.id);
-    } catch (err) {
-      toast({ title: "Booking failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setIsBookingAttraction(false);
-    }
-  };
-
   const handleCancelAttraction = async () => {
     setIsBookingAttraction(true);
     try {
@@ -404,8 +394,8 @@ function NodeDetailInline({
               </Button>
             )}
             {showAttractionBookButton && (
-              <Button variant="accent" size="sm" onClick={handleBookAttraction} disabled={isBookingAttraction}>
-                {isBookingAttraction ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Booking…</> : <><Check className="w-3.5 h-3.5 mr-1" /> Book Attraction</>}
+              <Button variant="accent" size="sm" onClick={handleOpenPassengerModal}>
+                <Check className="w-3.5 h-3.5 mr-1" /> Book Attraction
               </Button>
             )}
             {showBookFlightHotel && (
@@ -476,11 +466,11 @@ function NodeDetailInline({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm font-medium">
               <Users className="w-4 h-4 text-accent" />
-              Select Guests
+              Select Guests for {typeLabel}
             </DialogTitle>
           </DialogHeader>
           <div className="mt-2 space-y-2">
-            <p className="text-xs text-muted-foreground font-mono">Choose which trip members to book for.</p>
+            <p className="text-xs text-muted-foreground font-mono">Choose which trip members to book for this {typeLabel.toLowerCase()}.</p>
             {memberIds.length === 0 ? (
               <div className="py-6 flex flex-col items-center gap-2 text-center">
                 <Users className="w-8 h-8 text-muted-foreground/30" />
