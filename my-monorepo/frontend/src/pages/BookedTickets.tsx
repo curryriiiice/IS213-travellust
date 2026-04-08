@@ -23,6 +23,7 @@ import {
   User,
   RefreshCw,
 } from "lucide-react";
+import { getCurrentUserId } from "@/lib/auth";
 
 type Filter = "all" | "flight" | "hotel" | "attraction";
 
@@ -33,15 +34,6 @@ const BookedTickets = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
-
-  // Get current user ID from localStorage or use a default for development
-  // TODO: Integrate with proper authentication when available
-  const getCurrentUserId = (): string => {
-    const stored = localStorage.getItem("userId");
-    if (stored) return stored;
-    // Development fallback - should be replaced with actual auth
-    return "7c9e6679-7425-40de-944b-e07fc1f90ae7";
-  };
 
   // Format booking date and time as "MMM D, YYYY · HH:mm"
   const formatBookingDateTime = (dateString: string): string => {

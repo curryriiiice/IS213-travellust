@@ -15,8 +15,10 @@ import { toast } from "@/hooks/use-toast";
 import { Clock, Shield, Check, Loader2, Users, Trash2 } from "lucide-react";
 import { bookAttraction, bookFlight, bookHotel, cancelAttractionBooking } from "@/api/booking";
 import { updatePlannedAttraction } from "@/api/plan";
+import { getCurrentUserId, getUser } from "@/lib/auth";
+import { fetchAllClients, type ExternalClient } from "@/api/collaborator";
 
-const MAIN_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+const MAIN_USER_ID = getCurrentUserId();
 
 function addMinutesToTime(time: string, minutesToAdd: number): string {
   const [hours, minutes] = time.split(":").map(Number);
@@ -106,6 +108,37 @@ function NodeDetailInline({
   const [isBooking, setIsBooking] = useState(false);
   const [isBookingAttraction, setIsBookingAttraction] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [clients, setClients] = useState<ExternalClient[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState(false);
+
+  // Fetch clients when passenger modal opens
+  useEffect(() => {
+    if (isPassengerModalOpen && clients.length === 0) {
+      setIsLoadingClients(true);
+      fetchAllClients()
+        .then((fetchedClients) => {
+          setClients(fetchedClients);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch clients:", error);
+        })
+        .finally(() => {
+          setIsLoadingClients(false);
+        });
+    }
+  }, [isPassengerModalOpen, clients.length]);
+
+  // Helper to get user name from ID
+  const getUserName = (userId: string): string => {
+    const client = clients.find((c) => c.client_uuid === userId);
+    if (client) return client.name;
+
+    // Fallback to current user from localStorage
+    const currentUser = getUser();
+    if (currentUser && currentUser.id === userId) return currentUser.name;
+
+    return userId;
+  };
 
   // Edit state
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -168,6 +201,9 @@ function NodeDetailInline({
       } else if (isHotelNode) {
         await bookHotel(tripId, MAIN_USER_ID, selectedUserIds, node.id);
         toast({ title: "🏨 Hotel Booking Successful", description: `Booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}.` });
+      } else if (isAttractionNode) {
+        await bookAttraction(tripId, MAIN_USER_ID, selectedUserIds, node.id);
+        toast({ title: "🎪 Attraction Booking Successful", description: `Booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}.` });
       }
       setIsPassengerModalOpen(false);
       onNodeBooked?.(node.id);
@@ -179,19 +215,6 @@ function NodeDetailInline({
   };
 
   // --- Attraction booking ---
-  const handleBookAttraction = async () => {
-    setIsBookingAttraction(true);
-    try {
-      await bookAttraction(tripId, MAIN_USER_ID, node.id);
-      toast({ title: "Attraction booked", description: `${node.title} is now booked.` });
-      onNodeBooked?.(node.id);
-    } catch (err) {
-      toast({ title: "Booking failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setIsBookingAttraction(false);
-    }
-  };
-
   const handleCancelAttraction = async () => {
     setIsBookingAttraction(true);
     try {
@@ -371,8 +394,8 @@ function NodeDetailInline({
               </Button>
             )}
             {showAttractionBookButton && (
-              <Button variant="accent" size="sm" onClick={handleBookAttraction} disabled={isBookingAttraction}>
-                {isBookingAttraction ? <><Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Booking…</> : <><Check className="w-3.5 h-3.5 mr-1" /> Book Attraction</>}
+              <Button variant="accent" size="sm" onClick={handleOpenPassengerModal}>
+                <Check className="w-3.5 h-3.5 mr-1" /> Book Attraction
               </Button>
             )}
             {showBookFlightHotel && (
@@ -443,11 +466,11 @@ function NodeDetailInline({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm font-medium">
               <Users className="w-4 h-4 text-accent" />
-              Select Guests
+              Select Guests for {typeLabel}
             </DialogTitle>
           </DialogHeader>
           <div className="mt-2 space-y-2">
-            <p className="text-xs text-muted-foreground font-mono">Choose which trip members to book for.</p>
+            <p className="text-xs text-muted-foreground font-mono">Choose which trip members to book for this {typeLabel.toLowerCase()}.</p>
             {memberIds.length === 0 ? (
               <div className="py-6 flex flex-col items-center gap-2 text-center">
                 <Users className="w-8 h-8 text-muted-foreground/30" />
@@ -455,26 +478,34 @@ function NodeDetailInline({
               </div>
             ) : (
               <div className="space-y-1 max-h-64 overflow-y-auto">
-                {memberIds.map((uid) => {
-                  const isSelected = selectedUserIds.includes(uid);
-                  return (
-                    <button
-                      key={uid}
-                      onClick={() => togglePassenger(uid)}
-                      className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-sm transition-all border ${
-                        isSelected ? "bg-accent/10 border-accent/40 text-foreground" : "border-transparent hover:bg-secondary/60 text-muted-foreground"
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? "bg-accent border-accent" : "border-border"}`}>
-                        {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-xs font-mono break-all">{uid}</p>
-                        {uid === MAIN_USER_ID && <p className="text-[10px] text-accent font-mono">you · main user</p>}
-                      </div>
-                    </button>
-                  );
-                })}
+                {isLoadingClients ? (
+                  <div className="text-center py-4">
+                    <Loader2 className="w-5 h-5 text-muted-foreground/40 mx-auto animate-spin" />
+                    <p className="text-xs text-muted-foreground mt-2">Loading users...</p>
+                  </div>
+                ) : (
+                  memberIds.map((uid) => {
+                    const isSelected = selectedUserIds.includes(uid);
+                    const userName = getUserName(uid);
+                    return (
+                      <button
+                        key={uid}
+                        onClick={() => togglePassenger(uid)}
+                        className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-sm transition-all border ${
+                          isSelected ? "bg-accent/10 border-accent/40 text-foreground" : "border-transparent hover:bg-secondary/60 text-muted-foreground"
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? "bg-accent border-accent" : "border-border"}`}>
+                          {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium">{userName}</p>
+                          {uid === MAIN_USER_ID && <p className="text-[10px] text-accent font-mono">you</p>}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             )}
             <div className="pt-2 border-t border-border">

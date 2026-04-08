@@ -6,7 +6,7 @@ import { TripCommandCenter } from '@/components/TripCommandCenter';
 import { getUserTrips, createTrip, updateTripMembers } from '@/api/trip';
 import { fetchAllClients, type ExternalClient } from '@/api/collaborator';
 import { getInitials, getColorFromUuid } from '@/lib/collaborator-utils';
-import type { Trip, ItineraryNode, Collaborator } from '@/types/trip';
+import type { Trip, Collaborator } from '@/types/trip';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -17,9 +17,6 @@ import {
 import {
   Plus,
   Compass,
-  Plane,
-  Building2,
-  MapPin,
   UserPlus,
   UserMinus,
   CalendarIcon,
@@ -36,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { getCurrentUserId } from '@/lib/auth';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -43,13 +41,11 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
-  const [addNodeOpen, setAddNodeOpen] = useState(false);
-  const [addNodeTripId, setAddNodeTripId] = useState<string | null>(null);
   const [collabOpen, setCollabOpen] = useState(false);
   const [collabTripId, setCollabTripId] = useState<string | null>(null);
   const [newTripOpen, setNewTripOpen] = useState(false);
 
-  const CURRENT_USER_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const CURRENT_USER_ID = getCurrentUserId();
 
   useEffect(() => {
     setIsLoading(true);
@@ -65,24 +61,12 @@ const Index = () => {
       .finally(() => setIsLoading(false));
   }, []);
 
-  // Add node form state
-  const [nodeType, setNodeType] = useState<'flight' | 'hotel' | 'attraction'>(
-    'flight',
-  );
-  const [nodeTitle, setNodeTitle] = useState('');
-  const [nodeSubtitle, setNodeSubtitle] = useState('');
-  const [nodeDate, setNodeDate] = useState('');
-  const [nodeTime, setNodeTime] = useState('09:00');
-  const [nodeCost, setNodeCost] = useState('');
-  const [nodeDuration, setNodeDuration] = useState('');
-
   // New trip form state
   const [tripName, setTripName] = useState('');
   const [tripDestination, setTripDestination] = useState('');
   const [tripStartDate, setTripStartDate] = useState<Date | undefined>();
   const [tripEndDate, setTripEndDate] = useState<Date | undefined>();
   const [tripBudget, setTripBudget] = useState('');
-  const [tripCurrency, setTripCurrency] = useState('USD');
 
   // Collaborator state
   const [availableClients, setAvailableClients] = useState<ExternalClient[]>(
@@ -92,7 +76,7 @@ const Index = () => {
   const [clientsError, setClientsError] = useState<string | null>(null);
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<
     Set<string>
-  >(new Set([CURRENT_USER_ID]));
+  >(new Set([getCurrentUserId()]));
 
   // Fetch collaborators when the create trip dialog or collab manager opens
   useEffect(() => {
@@ -141,8 +125,7 @@ const Index = () => {
     setTripStartDate(undefined);
     setTripEndDate(undefined);
     setTripBudget('');
-    setTripCurrency('USD');
-    setSelectedCollaboratorIds(new Set([CURRENT_USER_ID]));
+    setSelectedCollaboratorIds(new Set([getCurrentUserId()]));
   };
 
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
@@ -157,7 +140,7 @@ const Index = () => {
         startDate: format(tripStartDate, 'yyyy-MM-dd'),
         endDate: format(tripEndDate, 'yyyy-MM-dd'),
         budget: Number(tripBudget) || 0,
-        currency: tripCurrency,
+        currency: 'SGD',
         memberIds: Array.from(selectedCollaboratorIds),
       });
       setTrips((prev) => [...prev, created]);
@@ -189,46 +172,6 @@ const Index = () => {
       }
       return newSet;
     });
-  };
-
-  const handleAddNode = () => {
-    if (!addNodeTripId || !nodeTitle || !nodeDate) return;
-    const newNode: ItineraryNode = {
-      id: `n-${Date.now()}`,
-      type: nodeType,
-      title: nodeTitle,
-      subtitle: nodeSubtitle,
-      date: nodeDate,
-      time: nodeTime,
-      duration: nodeDuration || undefined,
-      cost: Number(nodeCost) || 0,
-      currency: 'USD',
-      status: 'pending',
-      details: {},
-    };
-    setTrips((prev) =>
-      prev.map((t) =>
-        t.id === addNodeTripId ? { ...t, nodes: [...t.nodes, newNode] } : t,
-      ),
-    );
-    toast({ title: 'Node added', description: `${nodeTitle} added to trip` });
-    setAddNodeOpen(false);
-    resetNodeForm();
-  };
-
-  const resetNodeForm = () => {
-    setNodeTitle('');
-    setNodeSubtitle('');
-    setNodeDate('');
-    setNodeTime('09:00');
-    setNodeCost('');
-    setNodeDuration('');
-    setNodeType('flight');
-  };
-
-  const openAddNode = (tripId: string) => {
-    setAddNodeTripId(tripId);
-    setAddNodeOpen(true);
   };
 
   const openCollabManager = (tripId: string) => {
@@ -349,10 +292,10 @@ const Index = () => {
           <Button
             variant="accent"
             size="sm"
-            onClick={() => setNewTripOpen(true)}
+            onClick={() => navigate('/search?type=flights')}
           >
             <Plus className="w-3.5 h-3.5" />
-            New Trip
+            Search
           </Button>
           <Button
             variant="ghost"
@@ -401,7 +344,23 @@ const Index = () => {
             </div>
           )}
 
-          {!isLoading && (
+          {!isLoading && trips.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-16 space-y-3"
+            >
+              <Compass className="w-12 h-12 text-muted-foreground/40 mx-auto" />
+              <p className="text-sm text-muted-foreground">
+                You have no trips at the moment. The world is your oyster, go wild!
+              </p>
+              <Button variant="outline" size="sm" onClick={() => setNewTripOpen(true)}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Create Trip
+              </Button>
+            </motion.div>
+          )}
+
+          {!isLoading && trips.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {trips.map((trip) => (
                 <div key={trip.id} className="relative group">
@@ -413,9 +372,9 @@ const Index = () => {
                       className="h-6 w-6 bg-card/90 backdrop-blur-sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        openAddNode(trip.id);
+                        navigate('/search?type=flights');
                       }}
-                      title="Add node"
+                      title="Search flights"
                     >
                       <Plus className="w-3 h-3" />
                     </Button>
@@ -560,35 +519,18 @@ const Index = () => {
             </div>
 
             {/* Budget */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-2">
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                  <DollarSign className="w-3 h-3 inline mr-1" />
-                  Budget
-                </label>
-                <input
-                  type="number"
-                  value={tripBudget}
-                  onChange={(e) => setTripBudget(e.target.value)}
-                  placeholder="5000"
-                  className="form-select-style"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                  Currency
-                </label>
-                <select
-                  value={tripCurrency}
-                  onChange={(e) => setTripCurrency(e.target.value)}
-                  className="form-select-style"
-                >
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
-                  <option value="JPY">JPY</option>
-                </select>
-              </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+                <DollarSign className="w-3 h-3 inline mr-1" />
+                Budget
+              </label>
+              <input
+                type="number"
+                value={tripBudget}
+                onChange={(e) => setTripBudget(e.target.value)}
+                placeholder="5000"
+                className="form-select-style"
+              />
             </div>
 
             {/* Collaborators */}
@@ -680,135 +622,6 @@ const Index = () => {
             >
               <Plus className="w-3.5 h-3.5" />{' '}
               {isCreatingTrip ? 'Creating…' : 'Create Trip'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Node Dialog */}
-      <Dialog open={addNodeOpen} onOpenChange={setAddNodeOpen}>
-        <DialogContent className="sm:max-w-md bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-medium">
-              Add to Itinerary
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-2">
-            <div className="flex border border-border rounded-sm overflow-hidden">
-              {[
-                { key: 'flight' as const, icon: Plane, label: 'Flight' },
-                { key: 'hotel' as const, icon: Building2, label: 'Hotel' },
-                {
-                  key: 'attraction' as const,
-                  icon: MapPin,
-                  label: 'Attraction',
-                },
-              ].map(({ key, icon: Icon, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setNodeType(key)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-mono uppercase tracking-widest transition-colors ${
-                    nodeType === key
-                      ? key === 'flight'
-                        ? 'bg-node-flight text-accent-foreground'
-                        : key === 'hotel'
-                          ? 'bg-node-hotel text-accent-foreground'
-                          : 'bg-node-attraction text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-secondary'
-                  } ${key !== 'flight' ? 'border-l border-border' : ''}`}
-                >
-                  <Icon className="w-3 h-3" /> {label}
-                </button>
-              ))}
-            </div>
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                Title
-              </label>
-              <input
-                value={nodeTitle}
-                onChange={(e) => setNodeTitle(e.target.value)}
-                placeholder={
-                  nodeType === 'flight'
-                    ? 'SQ 638'
-                    : nodeType === 'hotel'
-                      ? 'Park Hyatt Tokyo'
-                      : 'Tsukiji Market'
-                }
-                className="form-select-style"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                Subtitle
-              </label>
-              <input
-                value={nodeSubtitle}
-                onChange={(e) => setNodeSubtitle(e.target.value)}
-                placeholder={
-                  nodeType === 'flight' ? 'SFO → NRT' : 'Shinjuku, Tokyo'
-                }
-                className="form-select-style"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={nodeDate}
-                  onChange={(e) => setNodeDate(e.target.value)}
-                  className="form-select-style"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                  Time
-                </label>
-                <input
-                  type="time"
-                  value={nodeTime}
-                  onChange={(e) => setNodeTime(e.target.value)}
-                  className="form-select-style"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                  Cost (USD)
-                </label>
-                <input
-                  type="number"
-                  value={nodeCost}
-                  onChange={(e) => setNodeCost(e.target.value)}
-                  placeholder="0"
-                  className="form-select-style"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
-                  Duration
-                </label>
-                <input
-                  value={nodeDuration}
-                  onChange={(e) => setNodeDuration(e.target.value)}
-                  placeholder="2h 30m"
-                  className="form-select-style"
-                />
-              </div>
-            </div>
-            <Button
-              variant="accent"
-              size="sm"
-              className="w-full"
-              onClick={handleAddNode}
-              disabled={!nodeTitle || !nodeDate}
-            >
-              <Plus className="w-3.5 h-3.5" /> Add{' '}
-              {nodeType.charAt(0).toUpperCase() + nodeType.slice(1)}
             </Button>
           </div>
         </DialogContent>

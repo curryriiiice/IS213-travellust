@@ -1,40 +1,36 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
 import { LedgerPane } from "./LedgerPane";
 import { BudgetBar } from "./BudgetBar";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
 import type { Trip, ItineraryNode } from "@/types/trip";
-import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin, Loader2, X } from "lucide-react";
+import { ChevronLeft, Settings, Share2, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { fetchFlightById } from "@/api/flight";
 import { fetchHotelById } from "@/api/hotel";
-import { fetchAttractionsByTripId, searchCatalogAttractions } from "@/api/attraction";
+import { fetchAttractionsByTripId } from "@/api/attraction";
 import { getUserBookedTickets } from "@/api/booking";
 import {
-  saveCatalogAttraction,
-  saveManualAttraction,
   deleteFlight,
   deleteHotel,
   deletePlannedAttraction,
-  type AttractionPlanInput,
 } from "@/api/plan";
 import { useCollabSocket } from "@/hooks/useCollabSocket";
-import type { AttractionOffer } from "@/data/attractionData";
+import { getCurrentUserId } from "@/lib/auth";
 
 interface TripCommandCenterProps {
   trip: Trip;
   onBack: () => void;
-  onUpdateTrip?: (trip: Trip) => void;
 }
 
-const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+const CURRENT_USER_ID = getCurrentUserId();
 
-export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCenterProps) {
+export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
+  const navigate = useNavigate();
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);
-  const [addNodeOpen, setAddNodeOpen] = useState(false);
   const [enrichedNodes, setEnrichedNodes] = useState<ItineraryNode[]>([]);
   const [isEnriching, setIsEnriching] = useState(false);
 
@@ -100,63 +96,6 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
     },
     [trip.id]
   );
-
-  // Add node form state
-  const [nodeType, setNodeType] = useState<"flight" | "hotel" | "attraction">("flight");
-  const [nodeTitle, setNodeTitle] = useState("");
-  const [nodeSubtitle, setNodeSubtitle] = useState("");
-  const [nodeDate, setNodeDate] = useState("");
-  const [nodeTime, setNodeTime] = useState("09:00");
-  const [nodeCost, setNodeCost] = useState("");
-  const [nodeDuration, setNodeDuration] = useState("");
-  const [nodeGmapsLink, setNodeGmapsLink] = useState("");
-  const [catalogRecommendations, setCatalogRecommendations] = useState<AttractionOffer[]>([]);
-  const [selectedCatalogMatch, setSelectedCatalogMatch] = useState<AttractionOffer | null>(null);
-  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
-
-  const resetForm = () => {
-    setNodeTitle("");
-    setNodeSubtitle("");
-    setNodeDate("");
-    setNodeTime("09:00");
-    setNodeCost("");
-    setNodeDuration("");
-    setNodeGmapsLink("");
-    setCatalogRecommendations([]);
-    setSelectedCatalogMatch(null);
-    setNodeType("flight");
-  };
-
-  useEffect(() => {
-    if (!addNodeOpen || nodeType !== "attraction") {
-      setCatalogRecommendations([]);
-      setSelectedCatalogMatch(null);
-      setIsSearchingCatalog(false);
-      return;
-    }
-
-    const query = `${nodeTitle} ${nodeSubtitle}`.trim();
-    if (query.length < 3) {
-      setCatalogRecommendations([]);
-      setSelectedCatalogMatch(null);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(async () => {
-      setIsSearchingCatalog(true);
-      try {
-        const matches = await searchCatalogAttractions(query);
-        setCatalogRecommendations(matches.slice(0, 5));
-      } catch (error) {
-        console.error("Failed to search attraction catalog:", error);
-        setCatalogRecommendations([]);
-      } finally {
-        setIsSearchingCatalog(false);
-      }
-    }, 250);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [addNodeOpen, nodeTitle, nodeSubtitle, nodeType]);
 
   // Enrich trip details from microservices when trip changes
   useEffect(() => {
@@ -247,78 +186,6 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
   const nodesToDisplay = isEnriching ? trip.nodes : enrichedNodes;
   console.log("Displaying nodes:", nodesToDisplay.length, "isEnriching:", isEnriching);
 
-  const handleAddNode = () => {
-    if (!nodeTitle || !nodeDate) return;
-    if (nodeType === "attraction") {
-      const input: AttractionPlanInput = {
-        name: nodeTitle,
-        location: nodeSubtitle,
-        gmapsLink: nodeGmapsLink,
-        visitDate: nodeDate,
-        visitTime: nodeTime,
-        durationMinutes: Number(nodeDuration) || 120,
-        cost: Number(nodeCost) || 0,
-      };
-
-      const savePromise = selectedCatalogMatch
-        ? saveCatalogAttraction(trip.id, CURRENT_USER_ID, selectedCatalogMatch, {
-            ...input,
-            durationMinutes: Number(nodeDuration) || selectedCatalogMatch.durationMinutes || 120,
-            cost: nodeCost ? Number(nodeCost) : selectedCatalogMatch.price,
-          })
-        : saveManualAttraction(trip.id, CURRENT_USER_ID, input);
-
-      savePromise
-        .then(async () => {
-          const attractions = await fetchAttractionsByTripId(trip.id, trip.currency);
-          setEnrichedNodes((prev) => {
-            const nonAttractions = prev.filter((node) => node.type !== "attraction");
-            return sortNodes([...nonAttractions, ...attractions]);
-          });
-          toast({
-            title: "Attraction added",
-            description: selectedCatalogMatch
-              ? `${selectedCatalogMatch.name} saved from catalog.`
-              : `${nodeTitle} added to your trip.`,
-          });
-          setAddNodeOpen(false);
-          resetForm();
-        })
-        .catch((error) => {
-          console.error("Failed to add attraction:", error);
-          toast({
-            title: "Failed to add attraction",
-            description: error instanceof Error ? error.message : "Unknown error",
-            variant: "destructive",
-          });
-        });
-      return;
-    }
-
-    const newNode: ItineraryNode = {
-      id: `n-${Date.now()}`,
-      type: nodeType,
-      title: nodeTitle,
-      subtitle: nodeSubtitle,
-      date: nodeDate,
-      time: nodeTime,
-      duration: nodeDuration || undefined,
-      cost: Number(nodeCost) || 0,
-      currency: trip.currency,
-      status: "pending",
-      details: {},
-    };
-    const updatedTrip = {
-      ...trip,
-      nodes: [...trip.nodes, newNode],
-      spent: trip.spent + (Number(nodeCost) || 0),
-    };
-    onUpdateTrip?.(updatedTrip);
-    toast({ title: "Node added", description: `${nodeTitle} added to itinerary` });
-    setAddNodeOpen(false);
-    resetForm();
-  };
-
   // Group nodes by date
   const nodesByDate = nodesToDisplay.reduce(
     (acc, node) => {
@@ -328,12 +195,6 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
     },
     {} as Record<string, ItineraryNode[]>
   );
-
-  const typeConfig = {
-    flight: { icon: Plane, label: "Flight", color: "bg-accent text-accent-foreground" },
-    hotel: { icon: Building2, label: "Hotel", color: "bg-node-hotel text-accent-foreground" },
-    attraction: { icon: MapPin, label: "Attraction", color: "bg-node-attraction text-accent-foreground" },
-  };
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -356,10 +217,10 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
             variant="ghost"
             size="sm"
             className="h-7 text-xs gap-1.5"
-            onClick={() => { setAddNodeOpen(true); setSelectedNode(null); }}
+            onClick={() => navigate('/search?type=flights')}
           >
             <Plus className="w-3.5 h-3.5" />
-            Add
+            Search
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7">
             <Share2 className="w-3.5 h-3.5" />
@@ -385,7 +246,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={() => { setAddNodeOpen(true); setSelectedNode(null); }}
+              onClick={() => navigate('/search?type=flights')}
             >
               <Plus className="w-3.5 h-3.5" />
             </Button>
@@ -401,7 +262,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                   variant="outline"
                   size="sm"
                   className="text-xs"
-                  onClick={() => { setAddNodeOpen(true); setSelectedNode(null); }}
+                  onClick={() => navigate('/search?type=flights')}
                 >
                   Add your first item
                 </Button>
@@ -438,228 +299,27 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
           })()}
         </div>
 
-        {/* Center: Detail view / Add form */}
+        {/* Center: Detail view */}
         <div className="flex-1 pane-border flex flex-col overflow-hidden">
-          {addNodeOpen ? (
-            <>
-              <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                  Add to Itinerary
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => { setAddNodeOpen(false); resetForm(); }}
-                >
-                  <X className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {/* Type selector */}
-                <div className="flex gap-2">
-                  {(["flight", "hotel", "attraction"] as const).map((type) => {
-                    const cfg = typeConfig[type];
-                    const Icon = cfg.icon;
-                    return (
-                      <button
-                        key={type}
-                        onClick={() => setNodeType(type)}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-sm text-xs font-mono uppercase tracking-wider transition-colors ${
-                          nodeType === type ? cfg.color : "bg-secondary text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                        {cfg.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                      Title
-                    </label>
-                    <input
-                      className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                      placeholder={nodeType === "flight" ? "SFO → NRT" : nodeType === "hotel" ? "Hotel name" : "Attraction name"}
-                      value={nodeTitle}
-                      onChange={(e) => setNodeTitle(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                      Subtitle
-                    </label>
-                    <input
-                      className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                      placeholder={nodeType === "flight" ? "Japan Airlines JL001" : nodeType === "hotel" ? "Shibuya, Tokyo" : "Guided tour"}
-                      value={nodeSubtitle}
-                      onChange={(e) => setNodeSubtitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                        Date
-                      </label>
-                      <input
-                        type="date"
-                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                        value={nodeDate}
-                        onChange={(e) => setNodeDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                        Time
-                      </label>
-                      <input
-                        type="time"
-                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                        value={nodeTime}
-                        onChange={(e) => setNodeTime(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                        Cost ({trip.currency})
-                      </label>
-                      <input
-                        type="number"
-                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                        placeholder="0"
-                        value={nodeCost}
-                        onChange={(e) => setNodeCost(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                        Duration (min)
-                      </label>
-                      <input
-                        type="number"
-                        className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                        placeholder="120"
-                        value={nodeDuration}
-                        onChange={(e) => setNodeDuration(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  {nodeType === "attraction" && (
-                    <>
-                      <div>
-                        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                          Google Maps Link
-                        </label>
-                        <Input
-                          className="h-9 bg-secondary border-border text-sm"
-                          placeholder="https://maps.google.com/..."
-                          value={nodeGmapsLink}
-                          onChange={(e) => setNodeGmapsLink(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block">
-                            Catalog Recommendation
-                          </label>
-                          {isSearchingCatalog && (
-                            <span className="text-[10px] font-mono text-muted-foreground">Searching...</span>
-                          )}
-                        </div>
-                        {catalogRecommendations.length > 0 ? (
-                          <div className="space-y-2 rounded-sm border border-border p-2">
-                            {catalogRecommendations.map((recommendation) => {
-                              const isSelected = selectedCatalogMatch?.id === recommendation.id;
-                              return (
-                                <button
-                                  key={recommendation.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedCatalogMatch(recommendation);
-                                    setNodeTitle(recommendation.name);
-                                    setNodeSubtitle(recommendation.address);
-                                    setNodeGmapsLink(recommendation.gmapsLink ?? "");
-                                    setNodeDuration(String(recommendation.durationMinutes ?? 120));
-                                    setNodeCost(String(recommendation.price ?? 0));
-                                  }}
-                                  className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
-                                    isSelected
-                                      ? "border-node-attraction bg-node-attraction/10"
-                                      : "border-border bg-secondary/30 hover:bg-secondary/50"
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium truncate">{recommendation.name}</p>
-                                      <p className="text-[11px] text-muted-foreground truncate">{recommendation.address}</p>
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                      <p className="text-[10px] font-mono text-muted-foreground">
-                                        {recommendation.price === 0 ? "Free" : `$${recommendation.price}`}
-                                      </p>
-                                      <p className="text-[10px] font-mono text-muted-foreground">
-                                        {recommendation.durationMinutes}m
-                                      </p>
-                                    </div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="rounded-sm border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground">
-                            {nodeTitle.trim().length < 3
-                              ? "Start typing an attraction name to check the catalog first."
-                              : "No close catalog match found. You can still add this attraction manually."}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="px-6 py-3 border-t border-border shrink-0 flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => { setAddNodeOpen(false); resetForm(); }}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="accent"
-                  size="sm"
-                  onClick={handleAddNode}
-                  disabled={!nodeTitle || !nodeDate}
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" />
-                  Add {typeConfig[nodeType].label}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <DetailPane
-              node={selectedNode}
-              trip={trip}
-              onDelete={selectedNode?.status !== "confirmed" ? handleDeleteNode : undefined}
-              onNodeBooked={(nodeId) =>
-                setEnrichedNodes((prev) =>
-                  prev.map((n) => (n.id === nodeId ? { ...n, status: "confirmed" as const } : n))
-                )
-              }
-              onNodeRemoved={(nodeId) => {
-                setEnrichedNodes((prev) => prev.filter((n) => n.id !== nodeId));
-                setSelectedNode(null);
-              }}
-              onNodeUpdated={(updated) =>
-                setEnrichedNodes((prev) =>
-                  prev.map((n) => (n.id === updated.id ? updated : n))
-                )
-              }
-            />
-          )}
+          <DetailPane
+            node={selectedNode}
+            trip={trip}
+            onDelete={selectedNode?.status !== "confirmed" ? handleDeleteNode : undefined}
+            onNodeBooked={(nodeId) =>
+              setEnrichedNodes((prev) =>
+                prev.map((n) => (n.id === nodeId ? { ...n, status: "confirmed" as const } : n))
+              )
+            }
+            onNodeRemoved={(nodeId) => {
+              setEnrichedNodes((prev) => prev.filter((n) => n.id !== nodeId));
+              setSelectedNode(null);
+            }}
+            onNodeUpdated={(updated) =>
+              setEnrichedNodes((prev) =>
+                prev.map((n) => (n.id === updated.id ? updated : n))
+              )
+            }
+          />
         </div>
 
         {/* Right: Ledger & Social */}
