@@ -22,6 +22,8 @@ PERSISTENT_EVENT_TYPES = {
     "ATTRACTION_ADDED",
     "ATTRACTION_UPDATED",
     "ATTRACTION_DELETED",
+    "MEMBER_ADDED",
+    "MEMBER_REMOVED",
 }
 
 
@@ -59,6 +61,12 @@ def build_description(event_type: str, payload: dict) -> str:
     if event_type == "ATTRACTION_DELETED":
         deleted = payload.get("deleted_attraction") or {}
         return f"{deleted.get('name', 'Attraction')} removed"
+    if event_type == "MEMBER_ADDED":
+        name = payload.get("name", "Someone")
+        return f"{name} added to trip"
+    if event_type == "MEMBER_REMOVED":
+        name = payload.get("name", "Someone")
+        return f"{name} removed from trip"
     return event_type
 
 
@@ -200,6 +208,44 @@ def get_trip_activity(trip_id):
     except Exception as e:
         print(f"Error fetching trip activity: {e}")
         return jsonify({"error": "Failed to fetch activity"}), 500
+
+
+@app.route("/api/trip/<trip_id>/event", methods=["POST"])
+def post_trip_event(trip_id):
+    """Persist and broadcast a trip event directly (e.g. MEMBER_ADDED)."""
+    body = request.get_json(silent=True) or {}
+    event_type = body.get("type", "")
+    user_id = body.get("user_id")
+    data = body.get("data") or {}
+    timestamp = body.get("timestamp", datetime.utcnow().isoformat())
+
+    if not event_type:
+        return jsonify({"error": "type is required"}), 400
+
+    description = build_description(event_type, data)
+
+    if supabase and event_type in PERSISTENT_EVENT_TYPES:
+        try:
+            supabase.table("trip_activity").insert(
+                {
+                    "trip_id": trip_id,
+                    "event_type": event_type,
+                    "user_id": user_id or None,
+                    "description": description,
+                    "payload": data,
+                    "created_at": timestamp,
+                }
+            ).execute()
+        except Exception as db_err:
+            print(f"Failed to persist activity log entry: {db_err}")
+
+    socketio.emit(
+        "trip_update",
+        {"type": event_type, "trip_id": trip_id, "user_id": user_id, "data": data, "timestamp": timestamp},
+        room=trip_id,
+    )
+
+    return jsonify({"success": True})
 
 
 def start_redis_listener():

@@ -12,7 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Clock, Shield, Check, Loader2, Users, Trash2 } from "lucide-react";
+import { Clock, Shield, Check, Loader2, Users, Trash2, X } from "lucide-react";
 import { bookAttraction, bookFlight, bookHotel, cancelAttractionBooking } from "@/api/booking";
 import { updatePlannedAttraction } from "@/api/plan";
 import { getCurrentUserId, getUser } from "@/lib/auth";
@@ -36,13 +36,14 @@ function durationMinutesFromNode(node: ItineraryNode): number {
 interface DetailPaneProps {
   node: ItineraryNode | null;
   trip: Trip;
+  onClose?: () => void;
   onNodeBooked?: (nodeId: string) => void;
   onNodeRemoved?: (nodeId: string) => void;
   onNodeUpdated?: (node: ItineraryNode) => void;
   onDelete?: (node: ItineraryNode) => void;
 }
 
-export function DetailPane({ node, trip, onNodeBooked, onNodeRemoved, onNodeUpdated, onDelete }: DetailPaneProps) {
+export function DetailPane({ node, trip, onClose, onNodeBooked, onNodeRemoved, onNodeUpdated, onDelete }: DetailPaneProps) {
   if (!node) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -58,6 +59,7 @@ export function DetailPane({ node, trip, onNodeBooked, onNodeRemoved, onNodeUpda
     <NodeDetailInline
       node={node}
       trip={trip}
+      onClose={onClose}
       onNodeBooked={onNodeBooked}
       onNodeRemoved={onNodeRemoved}
       onNodeUpdated={onNodeUpdated}
@@ -69,6 +71,7 @@ export function DetailPane({ node, trip, onNodeBooked, onNodeRemoved, onNodeUpda
 function NodeDetailInline({
   node,
   trip,
+  onClose,
   onNodeBooked,
   onNodeRemoved,
   onNodeUpdated,
@@ -76,6 +79,7 @@ function NodeDetailInline({
 }: {
   node: ItineraryNode;
   trip: Trip;
+  onClose?: () => void;
   onNodeBooked?: (nodeId: string) => void;
   onNodeRemoved?: (nodeId: string) => void;
   onNodeUpdated?: (node: ItineraryNode) => void;
@@ -298,11 +302,20 @@ function NodeDetailInline({
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-1 overflow-y-auto p-6">
         {/* Header */}
-        <div className="flex items-center gap-2 mb-1">
-          <Icon className={`w-4 h-4 ${typeColor}`} />
-          <span className={`text-[10px] font-mono uppercase tracking-widest ${typeColor}`}>{typeLabel}</span>
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Icon className={`w-4 h-4 ${typeColor}`} />
+              <span className={`text-[10px] font-mono uppercase tracking-widest ${typeColor}`}>{typeLabel}</span>
+            </div>
+            <h2 className="text-lg font-medium tracking-tight">{node.title}</h2>
+          </div>
+          {onClose && (
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 -mt-1 -mr-2" onClick={onClose}>
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          )}
         </div>
-        <h2 className="text-lg font-medium tracking-tight">{node.title}</h2>
         {node.subtitle && <p className="text-sm text-muted-foreground mt-0.5">{node.subtitle}</p>}
 
         {/* Info grid */}

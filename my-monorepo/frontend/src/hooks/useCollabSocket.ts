@@ -83,6 +83,12 @@ function buildDescription(eventType: string, payload: Record<string, unknown>): 
     const deleted = obj(payload.deleted_attraction);
     return `${str(deleted.name) || "Attraction"} removed`;
   }
+  if (eventType === "MEMBER_ADDED") {
+    return `${str(payload.name) || "Someone"} added to trip`;
+  }
+  if (eventType === "MEMBER_REMOVED") {
+    return `${str(payload.name) || "Someone"} removed from trip`;
+  }
   return eventType;
 }
 
@@ -120,24 +126,10 @@ export function useCollabSocket(
 
     socket.on("user_joined", (data: { user_id: string; active_users: string[] }) => {
       setActiveUsers(data.active_users ?? []);
-      appendLog({
-        id: String(Date.now()),
-        eventType: "user_joined",
-        userId: data.user_id,
-        timestamp: new Date().toISOString(),
-        description: "Joined the trip",
-      });
     });
 
     socket.on("user_left", (data: { user_id: string; active_users: string[] }) => {
       setActiveUsers(data.active_users ?? []);
-      appendLog({
-        id: String(Date.now()),
-        eventType: "user_left",
-        userId: data.user_id,
-        timestamp: new Date().toISOString(),
-        description: "Left the trip",
-      });
     });
 
     socket.on("trip_update", (event: CollabEvent) => {
