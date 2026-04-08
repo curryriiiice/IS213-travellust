@@ -1,13 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { formatDisplayDate, formatFullDate } from "@/lib/date-utils";
 import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
 import { LedgerPane } from "./LedgerPane";
 import { BudgetBar } from "./BudgetBar";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
+import { NotificationBell } from "@/components/NotificationBell";
 import type { Trip, ItineraryNode, Collaborator } from "@/types/trip";
-import { ChevronLeft, Settings, Share2, Plus, Loader2 } from "lucide-react";
+import { ChevronLeft, Loader2, User, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { fetchFlightById } from "@/api/flight";
 import { fetchHotelById } from "@/api/hotel";
@@ -17,6 +22,7 @@ import {
   deleteFlight,
   deleteHotel,
   deletePlannedAttraction,
+  saveManualAttraction,
 } from "@/api/plan";
 import { useCollabSocket } from "@/hooks/useCollabSocket";
 import { getCurrentUserId } from "@/lib/auth";
@@ -26,15 +32,25 @@ import { getInitials, getColorFromUuid } from "@/lib/collaborator-utils";
 interface TripCommandCenterProps {
   trip: Trip;
   onBack: () => void;
+  onUpdateTrip?: (updatedTrip: Trip) => void;
 }
 
 const CURRENT_USER_ID = getCurrentUserId();
 
-export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
+export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCenterProps) {
   const navigate = useNavigate();
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);
   const [enrichedNodes, setEnrichedNodes] = useState<ItineraryNode[]>([]);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
+  const [customAttraction, setCustomAttraction] = useState({
+    name: "",
+    location: "",
+    visitDate: "",
+    visitTime: "",
+    cost: "",
+    durationMinutes: "",
+  });
 
   const sortNodes = (nodes: ItineraryNode[]) =>
     [...nodes].sort((a, b) => {
@@ -129,6 +145,37 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
     [trip.id]
   );
 
+  const handleSaveCustomAttraction = async () => {
+    try {
+      await saveManualAttraction(trip.id, CURRENT_USER_ID, {
+        name: customAttraction.name,
+        location: customAttraction.location,
+        visitDate: customAttraction.visitDate,
+        visitTime: customAttraction.visitTime,
+        cost: customAttraction.cost,
+        durationMinutes: parseInt(customAttraction.durationMinutes, 10),
+        status: "added",
+      });
+      toast({ title: "Success", description: "Custom attraction added to trip." });
+      setIsAddCustomOpen(false);
+      setCustomAttraction({
+        name: "",
+        location: "",
+        visitDate: "",
+        visitTime: "",
+        cost: "",
+        durationMinutes: "",
+      });
+      // The collab socket will trigger a refresh for other users
+    } catch (err) {
+      toast({
+        title: "Failed to add attraction",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Enrich trip details from microservices when trip changes
   useEffect(() => {
     const enrichTripDetails = async () => {
@@ -189,13 +236,20 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
 
       // Fetch user's real bookings and mark nodes confirmed where a matching ticket exists
       const userTickets = await getUserBookedTickets(CURRENT_USER_ID);
+      console.log("DEBUG: User tickets fetched:", userTickets.length, "tickets");
+      console.log("DEBUG: User tickets:", userTickets);
+
       const bookedIds = new Set(userTickets.map((t) => t.f_h_a_id));
+      console.log("DEBUG: Booked IDs set:", Array.from(bookedIds));
 
       const resolvedNodes = fetchedNodes.map((node) => {
+        const isBooked = bookedIds.has(node.id);
+        console.log(`DEBUG: Node ${node.id} (${node.title}): booked=${isBooked}, current status=${node.status}`);
+
         if (node.type === "attraction" && node.cost <= 0) {
           return { ...node, status: "added" as const };
         }
-        return bookedIds.has(node.id) ? { ...node, status: "confirmed" as const } : node;
+        return isBooked ? { ...node, status: "confirmed" as const } : node;
       });
 
       // Sort all items by date, then by time
@@ -218,6 +272,17 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
   const nodesToDisplay = isEnriching ? trip.nodes : enrichedNodes;
   console.log("Displaying nodes:", nodesToDisplay.length, "isEnriching:", isEnriching);
 
+  // Update parent with current total cost when nodes change
+  useEffect(() => {
+    if (onUpdateTrip && !isEnriching) {
+      const totalSpent = nodesToDisplay.reduce((sum, node) => sum + (node.cost || 0), 0);
+      onUpdateTrip({
+        ...trip,
+        spent: totalSpent,
+      });
+    }
+  }, [nodesToDisplay, isEnriching, trip, onUpdateTrip]);
+
   // Group nodes by date
   const nodesByDate = nodesToDisplay.reduce(
     (acc, node) => {
@@ -239,26 +304,32 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
           <div>
             <h1 className="text-sm font-medium tracking-tight">{trip.name}</h1>
             <p className="text-[10px] text-muted-foreground font-mono">
-              {trip.destination} · {trip.startDate} → {trip.endDate}
+              {trip.destination} · {formatFullDate(trip.startDate)} → {formatFullDate(trip.endDate)}
             </p>
+            {(() => {
+              const totalSpent = nodesToDisplay.reduce((sum, node) => sum + (node.cost || 0), 0);
+              const isOver = totalSpent > trip.budget;
+              return (
+                <p className="text-[10px] font-mono mt-0.5">
+                  <span className={isOver ? "text-destructive" : "text-foreground"}>
+                    ${totalSpent.toLocaleString()}
+                  </span>
+                  <span className="text-muted-foreground"> spent / ${trip.budget.toLocaleString()} {trip.currency}</span>
+                </p>
+              );
+            })()}
           </div>
         </div>
         <div className="flex items-center gap-3">
           <CollaboratorAvatars collaborators={collaboratorsWithStatus} />
+          <NotificationBell />
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1.5"
-            onClick={() => navigate('/search?type=flights')}
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => navigate("/profile")}
           >
-            <Plus className="w-3.5 h-3.5" />
-            Search
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Share2 className="w-3.5 h-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Settings className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5" />
           </Button>
         </div>
       </header>
@@ -278,7 +349,8 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={() => navigate('/search?type=flights')}
+              onClick={() => setIsAddCustomOpen(true)}
+              title="Add Custom Attraction"
             >
               <Plus className="w-3.5 h-3.5" />
             </Button>
@@ -304,11 +376,7 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
               <div key={date}>
                 <div className="px-4 py-2 sticky top-0 bg-card/95 backdrop-blur-sm z-10">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                    {new Date(date).toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {formatDisplayDate(date)}
                   </span>
                 </div>
                 {nodes.map((node) => (
@@ -360,6 +428,81 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
           <LedgerPane trip={trip} activeUsers={activeUsers} activityLog={activityLog} />
         </div>
       </div>
+
+      {/* Add Custom Attraction Dialog */}
+      <Dialog open={isAddCustomOpen} onOpenChange={setIsAddCustomOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Custom Attraction</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                placeholder="e.g., Private Food Tour"
+                value={customAttraction.name}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, name: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="subtitle">Subtitle</Label>
+              <Input
+                id="subtitle"
+                placeholder="e.g., Local Market"
+                value={customAttraction.location}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, location: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={customAttraction.visitDate}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, visitDate: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="time">Time</Label>
+              <Input
+                id="time"
+                type="time"
+                value={customAttraction.visitTime}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, visitTime: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cost">Cost</Label>
+              <Input
+                id="cost"
+                type="number"
+                placeholder="e.g., 150"
+                value={customAttraction.cost}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, cost: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="duration">Duration (minutes)</Label>
+              <Input
+                id="duration"
+                type="number"
+                placeholder="e.g., 120"
+                value={customAttraction.durationMinutes}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, durationMinutes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddCustomOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCustomAttraction}>
+              Add Attraction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

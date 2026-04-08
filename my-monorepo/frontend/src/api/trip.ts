@@ -36,8 +36,8 @@ function mapRawTrip(raw: RawTrip): Trip {
     destination,
     startDate,
     endDate,
-    budget: raw.budget ?? raw.calculated_cost ?? 0,
-    spent: 0,
+    budget: raw.budget ?? 0,
+    spent: raw.calculated_cost ?? 0,
     currency: 'SGD',
     collaborators: [], // member_ids are UUIDs; we don't have profiles to map yet
     nodes: [], // Nodes are separate – not returned by this endpoint

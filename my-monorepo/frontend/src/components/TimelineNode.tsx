@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { nodeColors, nodeColorsDot, nodeIcons, type ItineraryNode } from "@/types/trip";
+import { formatDisplayDate } from "@/lib/date-utils";
 import { AlertTriangle, Clock, Trash2 } from "lucide-react";
 
 interface TimelineNodeProps {
@@ -53,7 +54,7 @@ export function TimelineNode({ node, isSelected, onClick, onDelete, isFirst }: T
       {/* Date header for first or new date */}
       {isFirst && (
         <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
-          {node.date}
+          {formatDisplayDate(node.date)}
         </div>
       )}
 

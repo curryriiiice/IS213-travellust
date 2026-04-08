@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { nodeIcons, type ItineraryNode } from "@/types/trip";
+import { formatDisplayDate, formatFullDateTime, parseLocalParts } from "@/lib/date-utils";
 import type { Trip } from "@/types/trip";
 import { DisruptionBanner } from "./DisruptionBanner";
 import { Button } from "@/components/ui/button";
@@ -17,8 +18,11 @@ import { bookAttraction, bookFlight, bookHotel, cancelAttractionBooking } from "
 import { updatePlannedAttraction } from "@/api/plan";
 import { getCurrentUserId, getUser } from "@/lib/auth";
 import { fetchAllClients, type ExternalClient } from "@/api/collaborator";
+import { airports } from "@/data/flightData";
 
 const MAIN_USER_ID = getCurrentUserId();
+
+// Removed legacy formatting helpers in favor of @/lib/date-utils
 
 function addMinutesToTime(time: string, minutesToAdd: number): string {
   const [hours, minutes] = time.split(":").map(Number);
@@ -32,6 +36,22 @@ function durationMinutesFromNode(node: ItineraryNode): number {
   const fromDetails = Number(node.details.duration_minutes ?? "");
   return !Number.isNaN(fromDetails) && fromDetails > 0 ? fromDetails : 120;
 }
+
+// Helper: Get flight departure time display with origin timezone
+function getFlightDepartureTimeDisplay(node: ItineraryNode): string {
+  if (node.type !== "flight" || !node.details.origin) {
+    return node.time;
+  }
+
+  const originAirport = airports[node.details.origin];
+  if (!originAirport) {
+    return node.time;
+  }
+
+  return `${node.time} (${originAirport.timezone})`;
+}
+
+// Removed getFlightDuration in favor of using pre-calculated node.duration
 
 interface DetailPaneProps {
   node: ItineraryNode | null;
@@ -278,6 +298,20 @@ function NodeDetailInline({
   };
 
   const fieldLabelMap: Record<string, string> = {
+    airline: "Airline",
+    legroom: "Legroom",
+    name: "Name",
+    description: "Description",
+    amenities: "Amenities",
+    photos: "Photos",
+    datetime_check_in: "Check In",
+    datetime_check_out: "Check Out",
+    nights: "Night",
+    rate_per_night: "Nightly Rate",
+    gmaps_link: "View on Google Maps",
+    duration_minutes: "Duration",
+    location: "Location",
+    visit_time: "Visiting Time",
     flight_number: "Flight Number",
     aircraft_type: "Aircraft",
     co2_kg: "CO2 Consumption (kg)",
@@ -285,7 +319,7 @@ function NodeDetailInline({
     datetime_arrival: "Arrival",
     external_link: "More Information",
   };
-  const excludedFields = ["price_sgd", "price_usd", "arrival_time"];
+  const excludedFields = ["price_sgd", "price_usd", "arrival_time", "trip_id", "overall_rating"];
 
   const displayStatus = isAttractionNode && isFreeAttraction
     ? "Added"
@@ -320,12 +354,12 @@ function NodeDetailInline({
 
         {/* Info grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 py-4 border-t border-border">
-          <InfoBlock icon={Clock} label="Date" value={new Date(node.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} />
-          <InfoBlock icon={Clock} label="Time" value={node.time} />
+          <InfoBlock icon={Clock} label="Date" value={formatDisplayDate(node.date)} />
+          <InfoBlock icon={Clock} label={isFlightNode ? "Departure" : "Time"} value={isFlightNode ? getFlightDepartureTimeDisplay(node) : node.time} />
           {isAttractionNode && (
             <InfoBlock icon={Clock} label="End Time" value={addMinutesToTime(node.time, durationMinutesFromNode(node))} />
           )}
-          {node.duration && <InfoBlock icon={Clock} label="Duration" value={node.duration} />}
+          {(node.duration || isFlightNode) && <InfoBlock icon={Clock} label="Duration" value={node.duration} />}
           <InfoBlock icon={Shield} label="Status" value={displayStatus} success={isConfirmed} warn={node.status === "conflict" || node.status === "cancelled"} />
         </div>
 
@@ -358,12 +392,27 @@ function NodeDetailInline({
                       <a href={val as string} target="_blank" rel="noopener noreferrer">{val as string}</a>
                     ) : key === "gmaps_link" ? (
                       <a href={val as string} target="_blank" rel="noopener noreferrer" className="text-accent underline underline-offset-4">
-                        Open in Google Maps
+                        View on Google Maps
                       </a>
                     ) : key === "visit_time" ? (
                       <span>{node.time}</span>
-                    ) : key === "duration_minutes" ? (
-                      <span>{node.duration || `${val}m`}</span>
+                    ) : key === "duration_minutes" || key === "nights" ? (
+                      <span>{node.duration}</span>
+                    ) : key === "rate_per_night" ? (
+                      <span>${val as string}</span>
+                    ) : key === "datetime_departure" || key === "datetime_arrival" ? (
+                      <span>
+                        {(() => {
+                          const airportCode = key === "datetime_departure" ? node.details.origin : node.details.destination;
+                          const airport = airports[airportCode];
+                          const formatted = formatFullDateTime(val as string);
+                          return airport ? `${formatted} (${airport.timezone})` : formatted;
+                        })()}
+                      </span>
+                    ) : key === "datetime_check_in" || key === "datetime_check_out" ? (
+                      <span>
+                        {formatFullDateTime(val as string)}
+                      </span>
                     ) : (
                       val as string
                     )}
