@@ -10,7 +10,7 @@ import { fetchFlightById } from "@/api/flight";
 import { fetchHotelById } from "@/api/hotel";
 import { fetchAttractionById } from "@/api/attraction";
 import { fetchTripById } from "@/api/trip";
-import type { Trip } from "@/types/trip";
+import type { Trip, ItineraryNode } from "@/types/trip";
 import { Loader2 } from "lucide-react";
 import {
   Plane,
@@ -136,7 +136,7 @@ const BookedTickets = () => {
         };
 
         // Resolve each ticket by trying to fetch from all services
-        const resolvedBookings: BookingRecord[] = await Promise.all(
+        const resolvedBookings: (BookingRecord | null)[] = await Promise.all(
           bookedTickets.map(async (ticket) => {
             const { booked_ticket_id, f_h_a_id, cost } = ticket;
 
@@ -351,7 +351,7 @@ const BookedTickets = () => {
                   className="bg-card border border-border rounded-sm p-4 hover:border-accent/30 transition-colors cursor-pointer"
                   onClick={() =>
                     navigate("/details", {
-                      state: { itemType: "node", data: booking.data, tripId: booking.data.details?.trip_id, fromBookings: true },
+                      state: { itemType: "node", data: booking.data, tripId: (booking.data as ItineraryNode).details?.trip_id, fromBookings: true },
                     })
                   }
                 >
