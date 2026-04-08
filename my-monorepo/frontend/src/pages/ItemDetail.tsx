@@ -607,9 +607,7 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
               <span className="text-2xl font-mono tabular-nums font-medium">${flight.price.toLocaleString()}</span>
               <span className="text-sm text-muted-foreground ml-1.5">per person</span>
             </div>
-            <Button variant="accent" size="lg" onClick={onBook}>
-              <Plus className="w-4 h-4 mr-1.5" /> Add to Trip
-            </Button>
+  
           </div>
         )}
       </div>
@@ -714,9 +712,7 @@ function HotelDetail({ hotel, onBook }: { hotel: HotelOffer; onBook?: () => void
               <span className="text-2xl font-mono tabular-nums font-medium">${hotel.price}</span>
               <span className="text-sm text-muted-foreground ml-1.5">per night</span>
             </div>
-            <Button variant="accent" size="lg" onClick={onBook}>
-              <Plus className="w-4 h-4 mr-1.5" /> Add to Trip
-            </Button>
+        
           </div>
         )}
       </div>
@@ -789,9 +785,7 @@ function AttractionDetail({ attraction, onBook }: { attraction: AttractionOffer;
               </span>
               {attraction.price > 0 && <span className="text-sm text-muted-foreground ml-1.5">per person</span>}
             </div>
-            <Button variant="accent" size="lg" onClick={onBook}>
-              <Plus className="w-4 h-4 mr-1.5" /> Add to Trip
-            </Button>
+            
           </div>
         )}
       </div>
