@@ -93,7 +93,7 @@ function convertToFlightOffer(node: ItineraryNode): FlightOffer {
     duration: node.duration || "",
     durationMinutes: 0, // Extracted from duration string
     aircraft: node.details?.aircraft_type || "",
-    cabin: node.details?.cabin || "economy",
+    cabin: (node.details?.cabin || "economy") as "economy",
     price: node.cost,
     currency: node.currency,
     legroom: node.details?.legroom || "",
@@ -179,9 +179,6 @@ const ItemDetail = () => {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <p className="text-sm text-muted-foreground">No item data found</p>
-          <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
-            <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Go Back
-          </Button>
         </div>
       </div>
     );
@@ -1106,6 +1103,10 @@ function NodeDetail({
     }
   };
 
+  const isFlightNode = node.type === "flight";
+  const isAttractionNode = node.type === "attraction";
+  const isHotelNode = node.type === "hotel";
+
   // Get the primary datetime to display for a node
   const getPrimaryDateTime = (): { date: string; time: string; timezone?: string } => {
     if (isFlightNode) {
@@ -1214,10 +1215,7 @@ function NodeDetail({
 
   const excludedFields = ["price_sgd", "price_usd", "arrival_time", "lat", "long", "trip_id", "overall_rating", "nights"];
 
-  const isFlightNode = node.type === "flight";
-  const isAttractionNode = node.type === "attraction";
   // Determine if this is a bookable node (status not already confirmed)
-  const isHotelNode = node.type === "hotel";
   const isConfirmed = node.status === "confirmed";
   const isFreeAttraction = isAttractionNode && node.cost <= 0;
   const isCatalogAttraction =
