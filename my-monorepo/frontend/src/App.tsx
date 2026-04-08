@@ -32,10 +32,11 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <Routes>
-                <Route path="/" element={<Login />} />
+                <Route path="/" element={<Landing />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/landing" element={<Landing />} />
+                <Route path="/search" element={<SearchResults />} />
+                <Route path="/details" element={<ItemDetail />} />
 
                 <Route
                   path="/trips"
@@ -47,28 +48,10 @@ const App = () => (
                 />
 
                 <Route
-                  path="/search"
-                  element={
-                    <ProtectedRoute>
-                      <SearchResults />
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
                   path="/profile"
                   element={
                     <ProtectedRoute>
                       <Profile />
-                    </ProtectedRoute>
-                  }
-                />
-
-                <Route
-                  path="/details"
-                  element={
-                    <ProtectedRoute>
-                      <ItemDetail />
                     </ProtectedRoute>
                   }
                 />
@@ -100,14 +83,7 @@ const App = () => (
                   }
                 />
 
-                <Route
-                  path="/logout"
-                  element={
-                    <ProtectedRoute>
-                      <Logout />
-                    </ProtectedRoute>
-                  }
-                  />
+                <Route path="/logout" element={<Logout />} />
                   
                 <Route path="*" element={<NotFound />} />
                 

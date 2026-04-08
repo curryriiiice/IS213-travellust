@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [userId, setUserId] = useState("");
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem("user", JSON.stringify({ email, name: "Test User" }));
+    localStorage.setItem("user", JSON.stringify({ email, name: email.split("@")[0], id: userId.trim() }));
     localStorage.setItem("token", "test-token");
-    navigate("/profile");
+    const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/trips";
+    navigate(from, { replace: true });
   };
 
   return (
