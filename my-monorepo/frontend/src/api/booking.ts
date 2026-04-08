@@ -77,20 +77,33 @@ export async function bookFlight(
   return json;
 }
 
+/**
+ * Book an attraction via the book-attractions microservice.
+ *
+ * @param tripId      - UUID of the trip that contains this attraction
+ * @param mainUserId  - UUID of the user initiating the booking
+ * @param ticketHolders - Array of UUIDs for all ticket holders
+ * @param attractionId - UUID of the attraction to book
+ */
 export async function bookAttraction(
   tripId: string,
   mainUserId: string,
+  ticketHolders: string[],
   attractionId: string
 ): Promise<BookAttractionResponse> {
+  const requestBody = {
+    trip_id: tripId,
+    paid_by: mainUserId,
+    user_id: ticketHolders,
+    attraction_id: attractionId,
+  };
+
+  console.log("Booking attraction with payload:", requestBody);
+
   const response = await fetch("/api/book-attractions-service/api/book-attractions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      trip_id: tripId,
-      paid_by: mainUserId,
-      user_id: [mainUserId],
-      attraction_id: attractionId,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   const json = await parseBookingResponse<BookAttractionResponse>(response);

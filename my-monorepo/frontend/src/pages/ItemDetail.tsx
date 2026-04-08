@@ -35,7 +35,8 @@ import type { AttractionOffer } from "@/data/attractionData";
 import type { ItineraryNode } from "@/types/trip";
 import { bookAttraction, bookFlight, cancelAttractionBooking, bookHotel } from "@/api/booking";
 import { deletePlannedAttraction, updatePlannedAttraction } from "@/api/plan";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, getUser } from "@/lib/auth";
+import { fetchAllClients, type ExternalClient } from "@/api/collaborator";
 
 // Helper to convert ItineraryNode to HotelOffer when coming from booked tickets
 function convertToHotelOffer(node: ItineraryNode): HotelOffer {
@@ -129,6 +130,37 @@ const ItemDetail = () => {
   const [isPassengerModalOpen, setIsPassengerModalOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [isBooking, setIsBooking] = useState(false);
+  const [clients, setClients] = useState<ExternalClient[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState(false);
+
+  // Fetch clients when passenger modal opens
+  useEffect(() => {
+    if (isPassengerModalOpen && clients.length === 0) {
+      setIsLoadingClients(true);
+      fetchAllClients()
+        .then((fetchedClients) => {
+          setClients(fetchedClients);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch clients:", error);
+        })
+        .finally(() => {
+          setIsLoadingClients(false);
+        });
+    }
+  }, [isPassengerModalOpen, clients.length]);
+
+  // Helper to get user name from ID
+  const getUserName = (userId: string): string => {
+    const client = clients.find((c) => c.client_uuid === userId);
+    if (client) return client.name;
+
+    // Fallback to current user from localStorage
+    const currentUser = getUser();
+    if (currentUser && currentUser.id === userId) return currentUser.name;
+
+    return userId;
+  };
 
   if (!state) {
     return (
@@ -155,6 +187,18 @@ const ItemDetail = () => {
 
   // For node-type flight items: open passenger selection modal
   const handleBookFlight = () => {
+    if (state.itemType !== "node") return;
+    const memberIds = (state as { memberIds?: string[] }).memberIds ?? [];
+    // Pre-select main user if they are in the list
+    const initialSelection = memberIds.includes(MAIN_USER_ID)
+      ? [MAIN_USER_ID]
+      : [];
+    setSelectedUserIds(initialSelection);
+    setIsPassengerModalOpen(true);
+  };
+
+  // For node-type attraction items: open passenger selection modal
+  const handleBookAttraction = () => {
     if (state.itemType !== "node") return;
     const memberIds = (state as { memberIds?: string[] }).memberIds ?? [];
     // Pre-select main user if they are in the list
@@ -217,6 +261,13 @@ const ItemDetail = () => {
           title: "🏨 Hotel Booking Successful",
           description: `Hotel booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}. Status updated to Confirmed.`,
         });
+      } else if (nodeType === "attraction") {
+        await bookAttraction(tripId, MAIN_USER_ID, selectedUserIds, itemId);
+        setIsPassengerModalOpen(false);
+        toast({
+          title: "🎢 Attraction Booking Successful",
+          description: `Attraction booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}. Status updated to Confirmed.`,
+        });
       } else {
         throw new Error(`Unsupported booking type: ${nodeType}`);
       }
@@ -239,6 +290,8 @@ const ItemDetail = () => {
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "flight";
   const isNodeHotel =
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "hotel";
+  const isNodeAttraction =
+    state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "attraction";
 
   // Hide booking actions when coming from BookedTickets
   // All booked items should be read-only with disabled buttons
@@ -248,6 +301,8 @@ const ItemDetail = () => {
       ? handleBookFlight
       : isNodeFlight
       ? handleBookFlight
+      : isNodeAttraction
+      ? handleBookAttraction
       : state.itemType === "attraction"
       ? handleAddAttractionToTrip
       : state.itemType === "flight" || state.itemType === "hotel"
@@ -335,43 +390,48 @@ const ItemDetail = () => {
                 <p className="text-xs text-muted-foreground">
                   No member IDs found for this trip.
                 </p>
-                <p className="text-[10px] text-muted-foreground font-mono">
-                  Main user ID will be used: {MAIN_USER_ID.slice(0, 8)}…
-                </p>
               </div>
             ) : (
               <div className="space-y-1 max-h-64 overflow-y-auto">
-                {memberIds.map((uid) => {
-                  const isSelected = selectedUserIds.includes(uid);
-                  const isMainUser = uid === MAIN_USER_ID;
-                  return (
-                    <button
-                      key={uid}
-                      onClick={() => togglePassenger(uid)}
-                      className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-sm transition-all border ${
-                        isSelected
-                          ? "bg-accent/10 border-accent/40 text-foreground"
-                          : "border-transparent hover:bg-secondary/60 text-muted-foreground"
-                      }`}
-                    >
-                      <div
-                        className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${
+                {isLoadingClients ? (
+                  <div className="text-center py-4">
+                    <Loader2 className="w-5 h-5 text-muted-foreground/40 mx-auto animate-spin" />
+                    <p className="text-xs text-muted-foreground mt-2">Loading users...</p>
+                  </div>
+                ) : (
+                  memberIds.map((uid) => {
+                    const isSelected = selectedUserIds.includes(uid);
+                    const isMainUser = uid === MAIN_USER_ID;
+                    const userName = getUserName(uid);
+                    return (
+                      <button
+                        key={uid}
+                        onClick={() => togglePassenger(uid)}
+                        className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-sm transition-all border ${
                           isSelected
-                            ? "bg-accent border-accent"
-                            : "border-border"
+                            ? "bg-accent/10 border-accent/40 text-foreground"
+                            : "border-transparent hover:bg-secondary/60 text-muted-foreground"
                         }`}
                       >
-                        {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-xs font-mono break-all">{uid}</p>
-                        {isMainUser && (
-                          <p className="text-[10px] text-accent font-mono">you · main user</p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+                        <div
+                          className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected
+                              ? "bg-accent border-accent"
+                              : "border-border"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium">{userName}</p>
+                          {isMainUser && (
+                            <p className="text-[10px] text-accent font-mono">you</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             )}
 
@@ -922,35 +982,6 @@ function NodeDetail({
     setEditDuration(String(minutes));
   };
 
-  const handleBookAttraction = async () => {
-    if (!tripId) {
-      toast({
-        title: "Booking failed",
-        description: "Trip ID is missing for this attraction.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsBookingAttraction(true);
-    try {
-      await bookAttraction(tripId, MAIN_USER_ID, node.id);
-      toast({
-        title: "Attraction booked",
-        description: `${node.title} is now booked for your trip.`,
-      });
-      window.history.back();
-    } catch (error) {
-      toast({
-        title: "Booking failed",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setIsBookingAttraction(false);
-    }
-  };
-
   const handleConfirmManualAttraction = async () => {
     if (!tripId) {
       toast({
@@ -1199,18 +1230,10 @@ function NodeDetail({
                 <Button
                   variant="accent"
                   size="lg"
-                  onClick={handleBookAttraction}
-                  disabled={isBookingAttraction}
+                  onClick={onBook}
+                  disabled={!onBook}
                 >
-                  {isBookingAttraction ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Booking...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 mr-1.5" /> Book Attraction
-                    </>
-                  )}
+                  <Check className="w-4 h-4 mr-1.5" /> Book Attraction
                 </Button>
               )}
               {showGenericBookButton && (

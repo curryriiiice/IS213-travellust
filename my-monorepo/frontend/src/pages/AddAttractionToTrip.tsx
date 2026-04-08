@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CalendarDays, Loader2, MapPin, Plus } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Loader2, MapPin, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import { getUserTrips } from '@/api/trip';
 import { saveCatalogAttraction } from '@/api/plan';
+import { bookAttraction } from '@/api/booking';
+import { fetchAllClients, type ExternalClient } from '@/api/collaborator';
 import type { AttractionOffer } from '@/data/attractionData';
 import type { Trip } from '@/types/trip';
 import { Header } from '@/components/Header';
-import { getCurrentUserId } from '@/lib/auth';
+import { getCurrentUserId, getUser } from '@/lib/auth';
 
 const CURRENT_USER_ID = getCurrentUserId();
 

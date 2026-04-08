@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import type { ActivityLogEntry } from "@/hooks/useCollabSocket";
 import type { Collaborator } from "@/types/trip";
+import { fetchAllClients, type ExternalClient } from "@/api/collaborator";
+import { getUser } from "@/lib/auth";
 
 interface ActivityLogProps {
   entries: ActivityLogEntry[];
@@ -31,7 +34,38 @@ const EVENT_ICONS: Record<string, string> = {
 };
 
 export function ActivityLog({ entries, collaborators }: ActivityLogProps) {
-  const nameById = new Map(collaborators.map((c) => [c.id, c.name]));
+  const [clients, setClients] = useState<ExternalClient[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAllClients()
+      .then((data) => {
+        setClients(data);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch clients:", error);
+        setLoading(false);
+      });
+  }, []);
+
+  // Helper to get user name from ID
+  const getUserName = (userId: string): string => {
+    // First check collaborators (trip-specific)
+    const collaborator = collaborators.find((c) => c.id === userId);
+    if (collaborator) return collaborator.name;
+
+    // Then check external clients
+    const client = clients.find((c) => c.client_uuid === userId);
+    if (client) return client.name;
+
+    // Fallback to current user from localStorage
+    const currentUser = getUser();
+    if (currentUser && currentUser.id === userId) return currentUser.name;
+
+    // Last resort: show truncated ID
+    return userId.slice(0, 8);
+  };
 
   if (entries.length === 0) {
     return (
@@ -41,13 +75,19 @@ export function ActivityLog({ entries, collaborators }: ActivityLogProps) {
     );
   }
 
+  if (loading) {
+    return (
+      <p className="text-[10px] text-muted-foreground font-mono px-1 py-2">
+        Loading activity...
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
       {entries.map((entry) => {
         const icon = EVENT_ICONS[entry.eventType] ?? "·";
-        const name = entry.userId
-          ? (nameById.get(entry.userId) ?? entry.userId.slice(0, 8))
-          : null;
+        const name = entry.userId ? getUserName(entry.userId) : null;
 
         return (
           <div key={entry.id} className="flex items-start gap-2">
