@@ -1,3 +1,6 @@
+import { parsePlanResponse } from "@/api/plan";
+import { handleApiError, isRetryableError, retryWithBackoff } from "@/utils/apiErrorHandler";
+
 export interface FlightOffer {
   id: string;
   airline: string;
@@ -11,6 +14,7 @@ export interface FlightOffer {
   departureTimeConverted: string;
   arrivalTime: string;
   arrivalTimeConverted: string;
+  arrivalDateTime: string; // Full datetime for API calls (YYYY-MM-DD HH:MM:SS)
   duration: string;
   durationMinutes: number;
   aircraft: string;
@@ -27,6 +31,18 @@ export interface FlightSearchParams {
   destination: string;
   date: string;
   passengers: number;
+}
+
+// Plan service response interface for flight search
+interface FlightPlanResponse {
+  flights?: FlightApiResponse[];
+  search_metadata?: Record<string, any>;
+}
+
+// API response wrapper for direct flight search responses
+interface DirectFlightSearchResponse {
+  data: FlightApiResponse[];
+  success: boolean;
 }
 
 // Amadeus-style airport codes with timezone offsets (from UTC)
@@ -106,12 +122,12 @@ interface FlightApiResponse {
   price_usd: number;
 }
 
-// Helper: Convert date (YYYY-MM-DD) + 00:00 SGT to UTC ISO string
+// Helper: Convert date (YYYY-MM-DD) + 00:00 UTC to ISO string
 export function convertSGDateToUTC(dateStr: string): string {
-  // Parse the date string and create a datetime in SGT (UTC+8)
-  const sgtDate = new Date(`${dateStr}T00:00:00+08:00`);
-  // Convert to ISO UTC string
-  return sgtDate.toISOString();
+  // Parse the date string and create a datetime in UTC
+  const utcDate = new Date(`${dateStr}T00:00:00.000Z`);
+  // Return ISO string
+  return utcDate.toISOString();
 }
 
 // Helper: Parse API local datetime string to UTC epoch milliseconds
@@ -174,6 +190,9 @@ export function mapApiFlightToOffer(
   const depTimeConverted = originAirport.offset === destAirport.offset ? "" : formatTimeAtOffset(depMs, destAirport.offset);
   const arrTimeConverted = originAirport.offset === destAirport.offset ? "" : formatTimeAtOffset(arrMs, originAirport.offset);
 
+  // Store the full datetime for API calls (convert space to T for ISO format)
+  const arrivalDateTime = apiFlight.datetime_arrival.replace(" ", "T");
+
   return {
     id: generateId(),
     airline: apiFlight.airline,
@@ -187,6 +206,7 @@ export function mapApiFlightToOffer(
     departureTimeConverted: depTimeConverted,
     arrivalTime: localArrTime,
     arrivalTimeConverted: arrTimeConverted,
+    arrivalDateTime, // Full datetime for API calls
     duration,
     durationMinutes,
     aircraft: apiFlight.aircraft_type,
@@ -200,40 +220,88 @@ export function mapApiFlightToOffer(
 }
 
 // API call function
+/**
+ * Search for flights using the plan service gateway.
+ *
+ * This function routes search requests through the plan service for consistent
+ * error handling and future extensibility. The plan service validates requests
+ * and forwards to the flight-management service.
+ *
+ * Features:
+ * - Automatic retry logic for transient errors (network issues, timeouts, server errors)
+ * - Standardized error handling with user-friendly messages
+ * - Support for optional search parameters (children, cabin class, currency)
+ * - Exponential backoff for retries (1s, 2s delays)
+ *
+ * @param origin - Airport code for departure (e.g., "SIN")
+ * @param destination - Airport code for arrival (e.g., "HKG")
+ * @param date - Departure date in YYYY-MM-DD format
+ * @param options - Optional search parameters
+ * @param options.adults - Number of adult passengers (default: 1)
+ * @param options.children - Number of child passengers (optional)
+ * @param options.cabin_class - Cabin class: "economy" | "business" | "first" (optional)
+ * @param options.currency - Currency for pricing (default: "SGD")
+ * @returns Promise<FlightOffer[]> - Array of flight search results
+ * @throws {Error} - For validation, network, or server errors with user-friendly messages
+ *
+ * @example
+ * // Basic flight search
+ * const flights = await searchFlights("SIN", "HKG", "2026-04-15");
+ *
+ * @example
+ * // Flight search with options
+ * const flights = await searchFlights("SIN", "HKG", "2026-04-15", {
+ *   adults: 2,
+ *   children: 1,
+ *   cabin_class: "business",
+ *   currency: "USD"
+ * });
+ */
 export async function searchFlights(
   origin: string,
   destination: string,
-  date: string
+  date: string,
+  options?: {
+    adults?: number;
+    children?: number;
+    cabin_class?: "economy" | "business" | "first";
+    currency?: string;
+  }
 ): Promise<FlightOffer[]> {
-  console.log("searchFlights called with:", origin, destination, date);
-  const datetimeDeparture = convertSGDateToUTC(date);
+  console.log("searchFlights called with:", origin, destination, date, options);
 
-  const payload = {
-    origin,
-    destination,
-    datetime_departure: datetimeDeparture,
-  };
-  console.log("Flight search payload:", JSON.stringify(payload, null, 2));
+  return retryWithBackoff(async () => {
+    const datetimeDeparture = convertSGDateToUTC(date);
 
-  const response = await fetch("/api/flights/search", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+    const payload = {
+      origin,
+      destination,
+      datetime_departure: datetimeDeparture,
+      adults: options?.adults ?? 1,
+      currency: options?.currency ?? "SGD",
+      ...(options?.children !== undefined && { children: options.children }),
+      ...(options?.cabin_class && { cabin_class: options.cabin_class }),
+    };
+    console.log("Flight search payload:", JSON.stringify(payload, null, 2));
 
-  if (!response.ok) {
-    throw new Error(`Failed to search flights: ${response.statusText}`);
-  }
+    const response = await fetch("/api/plan/flights/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const data: FlightSearchResponse = await response.json();
+    const json = await parsePlanResponse<FlightPlanResponse | DirectFlightSearchResponse>(response);
+    if (!response.ok || !json.success) {
+      const error = await handleApiError({ response, message: json.error }, "flight search");
+      throw new Error(error.message);
+    }
 
-  if (!data.success) {
-    throw new Error("API returned unsuccessful response");
-  }
-
-  return data.data.map((flight) => mapApiFlightToOffer(flight, origin, destination));
+    // Handle both response structures: { data: [...] } and { data: { flights: [...] } }
+    const flights = Array.isArray(json.data) ? json.data : json.data?.flights || [];
+    return flights.map((flight) => mapApiFlightToOffer(flight, origin, destination));
+  }, 2, 1000); // maxRetries: 2, baseDelay: 1000ms
 }
 
 // Legacy mock data (kept for reference/testing)

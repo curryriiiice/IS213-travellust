@@ -1,4 +1,5 @@
 import type { ItineraryNode } from "@/types/trip";
+import { parseLocalParts } from "@/lib/date-utils";
 
 /**
  * Raw hotel response from hotel-management composite service
@@ -34,20 +35,6 @@ interface HotelResponse {
 }
 
 /**
- * Safely parse datetime string
- */
-function parseDateTime(dateTimeStr: string): Date {
-  let date = new Date(dateTimeStr);
-  if (isNaN(date.getTime())) {
-    date = new Date(`${dateTimeStr}Z`);
-  }
-  if (isNaN(date.getTime())) {
-    return new Date();
-  }
-  return date;
-}
-
-/**
  * Safely convert cost value to number
  */
 function parseCost(costValue: number | string | undefined): number {
@@ -61,12 +48,15 @@ function parseCost(costValue: number | string | undefined): number {
  * Map raw hotel data to ItineraryNode format
  */
 function mapHotelToNode(raw: RawHotel, tripCurrency: string): ItineraryNode {
-  const checkInDate = parseDateTime(raw.datetime_check_in);
-  const checkOutDate = parseDateTime(raw.datetime_check_out);
+  const { date, time } = parseLocalParts(raw.datetime_check_in);
+  const { date: checkOutDateStr } = parseLocalParts(raw.datetime_check_out);
 
-  // Extract date (YYYY-MM-DD) and time (default to 15:00 for check-in)
-  const date = checkInDate.toISOString().split("T")[0];
-  const time = "15:00"; // Standard hotel check-in time
+  const checkInDate = new Date(raw.datetime_check_in);
+  const checkOutDate = new Date(raw.datetime_check_out);
+
+  // Standard hotel check-in time is already handled by parseLocalParts if provided, 
+  // but if it's missing, we default to 15:00 in the UI. 
+  // For hotels, the time is often secondary to the date.
 
   // Calculate duration (number of nights)
   const durationMs = checkOutDate.getTime() - checkInDate.getTime();
@@ -105,6 +95,7 @@ function mapHotelToNode(raw: RawHotel, tripCurrency: string): ItineraryNode {
       datetime_check_out: raw.datetime_check_out,
       nights: nights.toString(),
       rate_per_night: ratePerNight.toString(),
+      trip_id: raw.trip_id || "",
     },
   };
 }
@@ -120,21 +111,17 @@ export async function fetchHotelById(hotelId: string, tripCurrency: string = "SG
     const response = await fetch(`/api/hotel-management/hotels/${hotelId}`);
 
     if (!response.ok) {
-      console.warn(`Failed to fetch hotel ${hotelId}: ${response.status}`);
       return null;
     }
 
     const json: HotelResponse = await response.json();
 
     if (!json.data?.hotel) {
-      console.warn(`Invalid hotel response for ${hotelId}`);
       return null;
     }
 
-    console.log("Fetched hotel data:", json.data.hotel);
     return mapHotelToNode(json.data.hotel, tripCurrency);
   } catch (error) {
-    console.error(`Error fetching hotel ${hotelId}:`, error);
     return null;
   }
 }

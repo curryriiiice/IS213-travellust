@@ -4,7 +4,6 @@ import random
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 from dotenv import load_dotenv
 import requests
 
@@ -23,11 +22,10 @@ class BookHotelsService:
         self.hotel_management_url = os.getenv("HOTEL_MANAGEMENT_URL", "http://hotel-management:5000")
         self.booked_tickets_url = os.getenv("BOOKED_TICKETS_URL", "http://booked_tickets:5000")
 
-        # AMQP Configuration
-        self.amqp_url = os.getenv("AMQP_URL", "amqp://localhost:5672")
-        self.amqp_exchange = os.getenv("AMQP_EXCHANGE", "bookings")
-        self.amqp_routing_key_activity = os.getenv("AMQP_ROUTING_KEY_ACTIVITY", "booking.activity")
-        self.amqp_routing_key_error = os.getenv("AMQP_ROUTING_KEY_ERROR", "booking.error")
+        # AMQP Configuration (travellust_notifications topic exchange)
+        self.rabbitmq_host = os.getenv("RABBITMQ_HOST", "rabbitmq")
+        self.rabbitmq_port = int(os.getenv("RABBITMQ_PORT", "5672"))
+        self.amqp_exchange = os.getenv("RABBITMQ_EXCHANGE", "travellust_notifications")
 
     def verify_hotel_ownership(
         self,
@@ -197,57 +195,51 @@ class BookHotelsService:
 
     def send_to_amqp(
         self,
-        booking_data: Dict[str, Any],
-        is_error: bool = False,
+        routing_key: str,
+        payload: Dict[str, Any],
     ) -> bool:
         """
-        Send booking data to AMQP broker.
+        Publish a booking event to the travellust_notifications topic exchange.
 
         Args:
-            booking_data: Dictionary containing booking information
-            is_error: True if this is an error message, False otherwise
+            routing_key: e.g. 'booking.success' or 'booking.failure'
+            payload: Dictionary containing booking information
 
         Returns:
             True if sent successfully, False otherwise
         """
         try:
-            # Try to import pika for AMQP communication
-            try:
-                import pika
-            except ImportError:
-                # pika is not installed, log and return
-                print("pika is not installed. AMQP communication skipped.")
-                return False
+            import pika
+        except ImportError:
+            print("pika is not installed. AMQP communication skipped.")
+            return False
 
-            # Connect to AMQP broker
-            connection = pika.BlockingConnection(pika.URLParameters(self.amqp_url))
+        try:
+            connection = pika.BlockingConnection(
+                pika.ConnectionParameters(
+                    host=self.rabbitmq_host,
+                    port=self.rabbitmq_port,
+                )
+            )
             channel = connection.channel()
-
-            # Declare exchange
-            channel.exchange_declare(exchange=self.amqp_exchange, exchange_type='direct', durable=True)
-
-            # Determine routing key based on whether it's an error or activity
-            routing_key = self.amqp_routing_key_error if is_error else self.amqp_routing_key_activity
-
-            # Add timestamp to booking data
-            booking_data['timestamp'] = datetime.utcnow().isoformat()
-            booking_data['event_type'] = 'error' if is_error else 'activity'
-
-            # Publish message
+            channel.exchange_declare(
+                exchange=self.amqp_exchange,
+                exchange_type="topic",
+                durable=True,
+            )
             channel.basic_publish(
                 exchange=self.amqp_exchange,
                 routing_key=routing_key,
-                body=json.dumps(booking_data),
+                body=json.dumps(payload),
                 properties=pika.BasicProperties(
-                    delivery_mode=2,  # Make message persistent
+                    content_type="application/json",
+                    delivery_mode=2,
                 ),
             )
-
             connection.close()
             return True
-
         except Exception as e:
-            print(f"Failed to send to AMQP broker: {str(e)}")
+            print(f"Failed to publish booking event to RabbitMQ: {str(e)}")
             return False
 
     def create_booked_tickets(
@@ -370,16 +362,16 @@ class BookHotelsService:
             ownership_check = self.verify_hotel_ownership(trip_id, hotel_id)
 
             if ownership_check.get("status") == "error":
-                # Send error to AMQP
-                self.send_to_amqp(
-                    {
-                        "trip_id": trip_id,
-                        "user_id": user_id,
-                        "hotel_id": hotel_id,
-                        "error": ownership_check.get("error"),
-                    },
-                    is_error=True,
-                )
+                self.send_to_amqp("booking.failure", {
+                    "service": "book-hotels",
+                    "trip_id": trip_id,
+                    "hotel_id": hotel_id,
+                    "hotel_name": None,
+                    "paid_by": user_id,
+                    "user_id": ticket_holder_userids,
+                    "reason": ownership_check.get("error"),
+                    "status": "failure",
+                })
 
                 return {
                     "success": False,
@@ -393,16 +385,16 @@ class BookHotelsService:
             hotel_details = self.get_hotel_details_with_latest_price(hotel_id)
 
             if hotel_details.get("status") == "error":
-                # Send error to AMQP
-                self.send_to_amqp(
-                    {
-                        "trip_id": trip_id,
-                        "user_id": user_id,
-                        "hotel_id": hotel_id,
-                        "error": hotel_details.get("error"),
-                    },
-                    is_error=True,
-                )
+                self.send_to_amqp("booking.failure", {
+                    "service": "book-hotels",
+                    "trip_id": trip_id,
+                    "hotel_id": hotel_id,
+                    "hotel_name": None,
+                    "paid_by": user_id,
+                    "user_id": ticket_holder_userids,
+                    "reason": hotel_details.get("error"),
+                    "status": "failure",
+                })
 
                 return {
                     "success": False,
@@ -419,19 +411,16 @@ class BookHotelsService:
             booking_succeeded = self.booking_fail_chance()
 
             if not booking_succeeded:
-                # Booking failed - send error to AMQP
-                self.send_to_amqp(
-                    {
-                        "trip_id": trip_id,
-                        "user_id": user_id,
-                        "hotel_id": hotel_id,
-                        "hotel_name": hotel.get("name"),
-                        "ticket_holders": ticket_holder_userids,
-                        "price": price,
-                        "error": "Booking failed - service temporarily unavailable",
-                    },
-                    is_error=True,
-                )
+                self.send_to_amqp("booking.failure", {
+                    "service": "book-hotels",
+                    "trip_id": trip_id,
+                    "hotel_id": hotel_id,
+                    "hotel_name": hotel.get("name") if hotel else None,
+                    "paid_by": user_id,
+                    "user_id": ticket_holder_userids,
+                    "reason": "Booking failed - service temporarily unavailable",
+                    "status": "failure",
+                })
 
                 return {
                     "success": False,
@@ -441,20 +430,7 @@ class BookHotelsService:
                     "status": "error",
                 }
 
-            # Step 4: Send booking activity to AMQP
-            self.send_to_amqp(
-                {
-                    "trip_id": trip_id,
-                    "user_id": user_id,
-                    "hotel_id": hotel_id,
-                    "hotel_name": hotel.get("name"),
-                    "ticket_holders": ticket_holder_userids,
-                    "price": price,
-                },
-                is_error=False,
-            )
-
-            # Step 5: Create booked_tickets (one per ticket holder)
+            # Step 4: Create booked_tickets (one per ticket holder)
             booked_tickets_result = self.create_booked_tickets(
                 user_id=user_id,
                 hotel_id=hotel_id,
@@ -463,8 +439,6 @@ class BookHotelsService:
             )
 
             if booked_tickets_result.get("status") == "error":
-                # Even though ticket creation failed, booking was successful
-                # Log this but return success
                 print(f"Warning: Failed to create booked_tickets: {booked_tickets_result.get('error')}")
 
                 return {
@@ -475,8 +449,24 @@ class BookHotelsService:
                     "status": "success",
                 }
 
-            # Step 6: Return booking confirmation
+            # Step 5: Publish success notification
             booked_tickets = booked_tickets_result.get("booked_tickets", [])
+
+            self.send_to_amqp("booking.success", {
+                "service": "book-hotels",
+                "trip_id": trip_id,
+                "hotel_id": hotel_id,
+                "hotel_name": hotel.get("name") if hotel else None,
+                "paid_by": user_id,
+                "user_id": ticket_holder_userids,
+                "booking_id": [
+                    t.get("booked_ticket_id") for t in booked_tickets if t
+                ],
+                "cost": price,
+                "status": "success",
+            })
+
+            # Step 6: Return booking confirmation
             message = f"Booking successful! Your hotel has been booked for {len(ticket_holder_userids)} guest{'s' if len(ticket_holder_userids) > 1 else ''}."
 
             if booked_tickets_result.get("status") == "partial_success":
@@ -491,16 +481,16 @@ class BookHotelsService:
             }
 
         except Exception as e:
-            # Send unexpected error to AMQP
-            self.send_to_amqp(
-                {
-                    "trip_id": trip_id,
-                    "user_id": user_id,
-                    "hotel_id": hotel_id,
-                    "error": f"Unexpected error: {str(e)}",
-                },
-                is_error=True,
-            )
+            self.send_to_amqp("booking.failure", {
+                "service": "book-hotels",
+                "trip_id": trip_id,
+                "hotel_id": hotel_id,
+                "hotel_name": None,
+                "paid_by": user_id,
+                "user_id": ticket_holder_userids,
+                "reason": f"Unexpected error: {str(e)}",
+                "status": "failure",
+            })
 
             return {
                 "success": False,

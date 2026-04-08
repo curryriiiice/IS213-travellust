@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { formatFullDate } from "@/lib/date-utils";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
 import type { Trip } from "@/types/trip";
 import { MapPin, Calendar, ArrowRight } from "lucide-react";
@@ -9,8 +10,6 @@ interface TripCardProps {
 }
 
 export function TripCard({ trip, onClick }: TripCardProps) {
-  const pct = trip.budget > 0 ? Math.min((trip.spent / trip.budget) * 100, 100) : 0;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -18,7 +17,7 @@ export function TripCard({ trip, onClick }: TripCardProps) {
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
       onClick={() => onClick(trip)}
-      className="bg-card border border-border rounded-sm p-4 cursor-pointer node-interactive surface-elevated group"
+      className="bg-card border border-border rounded-sm p-4 cursor-pointer node-interactive surface-elevated group min-h-[160px]"
     >
       <div className="flex items-start justify-between mb-3">
         <div>
@@ -33,28 +32,15 @@ export function TripCard({ trip, onClick }: TripCardProps) {
 
       <div className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground mb-3">
         <Calendar className="w-3 h-3" />
-        {trip.startDate} → {trip.endDate}
+        {formatFullDate(trip.startDate)} → {formatFullDate(trip.endDate)}
       </div>
 
-      {/* Budget mini-bar */}
-      <div className="mb-3">
-        <div className="h-1 bg-secondary rounded-sm overflow-hidden">
-          <div className="h-full budget-gradient rounded-sm" style={{ width: `${pct}%` }} />
-        </div>
-        <div className="flex justify-between mt-1">
-          <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
-            ${trip.spent.toLocaleString()}
-          </span>
-          <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
-            ${trip.budget.toLocaleString()}
-          </span>
-        </div>
-      </div>
+      <div className="flex-1"></div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mt-auto">
         <CollaboratorAvatars collaborators={trip.collaborators} />
         <span className="text-[10px] font-mono text-muted-foreground">
-          {trip.nodes.length} nodes
+          {(trip.flight_ids?.length ?? 0) + (trip.hotel_ids?.length ?? 0) + (trip.attraction_ids?.length ?? 0) + trip.nodes.length} nodes
         </span>
       </div>
     </motion.div>

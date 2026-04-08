@@ -1,10 +1,14 @@
 import random
+import logging
 from typing import Dict
 from ..clients.trips_client import TripsClient
 from ..clients.flights_client import FlightsClient
 from ..clients.booked_tickets_client import BookedTicketsClient
 from ..config import Config
+from ..publisher import publish_booking_event
 from ..utils.api_errors import ExternalServiceError, BookingError
+
+logger = logging.getLogger(__name__)
 
 
 class BookingService:
@@ -28,7 +32,8 @@ class BookingService:
         4. Simulate 1/50 chance of failure
         5. Get flight details from flight-management
         6. Create bookings in booked_tickets for each user
-        7. Return success message
+        7. Publish notification event
+        8. Return success message
 
         Returns: Dict with success message
         """
@@ -47,6 +52,15 @@ class BookingService:
 
         # Step 1.5: Simulate 1/50 chance of failure
         if random.randint(1, 50) == 1:
+            publish_booking_event("booking.failure", {
+                "service": "book-flight",
+                "trip_id": trip_id,
+                "flight_id": flight_id,
+                "paid_by": user_id,
+                "user_id": user_ids,
+                "reason": "The booking has failed!",
+                "status": "failure",
+            })
             raise BookingError("The booking has failed!")
 
         # Step 2: Get flight details from flight-management
@@ -54,17 +68,30 @@ class BookingService:
 
         # Step 3: Create bookings for each user
         cost = flight_data.get('cost', 0)
-        success_count, failure_count = self.booked_tickets_client.create_bulk_bookings(
+        success_count, failure_count, booking_ids = self.booked_tickets_client.create_bulk_bookings(
             paid_by=user_id,
             fha_id=flight_id,
             user_ids=user_ids,
             cost=cost
         )
 
-        # Step 4: Return appropriate message
+        # Step 4: Publish notification event
         flight_number = flight_data.get('flight_number', 'Unknown')
         datetime_departure = flight_data.get('datetime_departure', 'Unknown')
 
+        publish_booking_event("booking.success", {
+            "service": "book-flight",
+            "trip_id": trip_id,
+            "flight_id": flight_id,
+            "flight_number": flight_number,
+            "paid_by": user_id,
+            "user_id": user_ids,
+            "booking_id": booking_ids,
+            "cost": cost,
+            "status": "success",
+        })
+
+        # Step 5: Return appropriate message
         if failure_count == 0:
             message = f"Your flight {flight_number} on {datetime_departure} has been successfully booked for {success_count} people!"
             return {'success': True, 'message': message}

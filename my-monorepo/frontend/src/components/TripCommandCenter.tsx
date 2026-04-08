@@ -1,47 +1,56 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { formatDisplayDate, formatFullDate } from "@/lib/date-utils";
 import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
 import { LedgerPane } from "./LedgerPane";
 import { BudgetBar } from "./BudgetBar";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
-import type { Trip, ItineraryNode } from "@/types/trip";
-import { ChevronLeft, Settings, Share2, Plus, Plane, Building2, MapPin, Loader2 } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
+import type { Trip, ItineraryNode, Collaborator } from "@/types/trip";
+import { ChevronLeft, Loader2, User, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { fetchFlightById } from "@/api/flight";
 import { fetchHotelById } from "@/api/hotel";
-import { fetchAttractionsByTripId, searchCatalogAttractions } from "@/api/attraction";
+import { fetchAttractionsByTripId } from "@/api/attraction";
 import { getUserBookedTickets } from "@/api/booking";
 import {
-  saveCatalogAttraction,
+  deleteFlight,
+  deleteHotel,
+  deletePlannedAttraction,
   saveManualAttraction,
-  type AttractionPlanInput,
 } from "@/api/plan";
 import { useCollabSocket } from "@/hooks/useCollabSocket";
-import type { AttractionOffer } from "@/data/attractionData";
+import { getCurrentUserId } from "@/lib/auth";
+import { fetchAllClients } from "@/api/collaborator";
+import { getInitials, getColorFromUuid } from "@/lib/collaborator-utils";
 
 interface TripCommandCenterProps {
   trip: Trip;
   onBack: () => void;
-  onUpdateTrip?: (trip: Trip) => void;
+  onUpdateTrip?: (updatedTrip: Trip) => void;
 }
 
-const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+const CURRENT_USER_ID = getCurrentUserId();
 
 export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCenterProps) {
   const navigate = useNavigate();
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);
-  const [addNodeOpen, setAddNodeOpen] = useState(false);
   const [enrichedNodes, setEnrichedNodes] = useState<ItineraryNode[]>([]);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
+  const [customAttraction, setCustomAttraction] = useState({
+    name: "",
+    location: "",
+    visitDate: "",
+    visitTime: "",
+    cost: "",
+    durationMinutes: "",
+  });
 
   const sortNodes = (nodes: ItineraryNode[]) =>
     [...nodes].sort((a, b) => {
@@ -82,62 +91,90 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
 
   const { activeUsers, activityLog } = useCollabSocket(trip.id, CURRENT_USER_ID, handleTripUpdate);
 
-  // Add node form state
-  const [nodeType, setNodeType] = useState<"flight" | "hotel" | "attraction">("flight");
-  const [nodeTitle, setNodeTitle] = useState("");
-  const [nodeSubtitle, setNodeSubtitle] = useState("");
-  const [nodeDate, setNodeDate] = useState("");
-  const [nodeTime, setNodeTime] = useState("09:00");
-  const [nodeCost, setNodeCost] = useState("");
-  const [nodeDuration, setNodeDuration] = useState("");
-  const [nodeGmapsLink, setNodeGmapsLink] = useState("");
-  const [catalogRecommendations, setCatalogRecommendations] = useState<AttractionOffer[]>([]);
-  const [selectedCatalogMatch, setSelectedCatalogMatch] = useState<AttractionOffer | null>(null);
-  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
-
-  const resetForm = () => {
-    setNodeTitle("");
-    setNodeSubtitle("");
-    setNodeDate("");
-    setNodeTime("09:00");
-    setNodeCost("");
-    setNodeDuration("");
-    setNodeGmapsLink("");
-    setCatalogRecommendations([]);
-    setSelectedCatalogMatch(null);
-    setNodeType("flight");
-  };
+  const [resolvedCollaborators, setResolvedCollaborators] = useState<Collaborator[]>([]);
 
   useEffect(() => {
-    if (!addNodeOpen || nodeType !== "attraction") {
-      setCatalogRecommendations([]);
-      setSelectedCatalogMatch(null);
-      setIsSearchingCatalog(false);
-      return;
-    }
+    if (!trip.member_ids?.length) return;
+    fetchAllClients()
+      .then((clients) => {
+        const collaborators = trip.member_ids!
+          .map((id) => {
+            const client = clients.find((c) => c.client_uuid === id);
+            return client
+              ? {
+                  id: client.client_uuid,
+                  name: client.name,
+                  initials: getInitials(client.name),
+                  color: getColorFromUuid(client.client_uuid),
+                  isOnline: false,
+                }
+              : null;
+          })
+          .filter((c): c is Collaborator => c !== null);
+        setResolvedCollaborators(collaborators);
+      })
+      .catch(() => {});
+  }, [trip.member_ids]);
 
-    const query = `${nodeTitle} ${nodeSubtitle}`.trim();
-    if (query.length < 3) {
-      setCatalogRecommendations([]);
-      setSelectedCatalogMatch(null);
-      return;
-    }
+  const collaboratorsWithStatus = useMemo(
+    () => resolvedCollaborators.map((c) => ({ ...c, isOnline: activeUsers.includes(c.id) })),
+    [resolvedCollaborators, activeUsers]
+  );
 
-    const timeoutId = window.setTimeout(async () => {
-      setIsSearchingCatalog(true);
+  const handleDeleteNode = useCallback(
+    async (node: ItineraryNode) => {
       try {
-        const matches = await searchCatalogAttractions(query);
-        setCatalogRecommendations(matches.slice(0, 5));
-      } catch (error) {
-        console.error("Failed to search attraction catalog:", error);
-        setCatalogRecommendations([]);
-      } finally {
-        setIsSearchingCatalog(false);
+        if (node.type === "flight") {
+          await deleteFlight(trip.id, CURRENT_USER_ID, node.id);
+        } else if (node.type === "hotel") {
+          await deleteHotel(trip.id, CURRENT_USER_ID, node.id);
+        } else if (node.type === "attraction") {
+          await deletePlannedAttraction(trip.id, CURRENT_USER_ID, node.id);
+        }
+        // Optimistic removal — collab socket will also fire for other users
+        setEnrichedNodes((prev) => prev.filter((n) => n.id !== node.id));
+        toast({ title: "Removed", description: `${node.title} removed from trip.` });
+      } catch (err) {
+        toast({
+          title: "Failed to remove",
+          description: err instanceof Error ? err.message : "Unknown error",
+          variant: "destructive",
+        });
       }
-    }, 250);
+    },
+    [trip.id]
+  );
 
-    return () => window.clearTimeout(timeoutId);
-  }, [addNodeOpen, nodeTitle, nodeSubtitle, nodeType]);
+  const handleSaveCustomAttraction = async () => {
+    try {
+      await saveManualAttraction(trip.id, CURRENT_USER_ID, {
+        name: customAttraction.name,
+        location: customAttraction.location,
+        visitDate: customAttraction.visitDate,
+        visitTime: customAttraction.visitTime,
+        cost: customAttraction.cost,
+        durationMinutes: parseInt(customAttraction.durationMinutes, 10),
+        status: "added",
+      });
+      toast({ title: "Success", description: "Custom attraction added to trip." });
+      setIsAddCustomOpen(false);
+      setCustomAttraction({
+        name: "",
+        location: "",
+        visitDate: "",
+        visitTime: "",
+        cost: "",
+        durationMinutes: "",
+      });
+      // The collab socket will trigger a refresh for other users
+    } catch (err) {
+      toast({
+        title: "Failed to add attraction",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Enrich trip details from microservices when trip changes
   useEffect(() => {
@@ -199,13 +236,20 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
 
       // Fetch user's real bookings and mark nodes confirmed where a matching ticket exists
       const userTickets = await getUserBookedTickets(CURRENT_USER_ID);
+      console.log("DEBUG: User tickets fetched:", userTickets.length, "tickets");
+      console.log("DEBUG: User tickets:", userTickets);
+
       const bookedIds = new Set(userTickets.map((t) => t.f_h_a_id));
+      console.log("DEBUG: Booked IDs set:", Array.from(bookedIds));
 
       const resolvedNodes = fetchedNodes.map((node) => {
+        const isBooked = bookedIds.has(node.id);
+        console.log(`DEBUG: Node ${node.id} (${node.title}): booked=${isBooked}, current status=${node.status}`);
+
         if (node.type === "attraction" && node.cost <= 0) {
           return { ...node, status: "added" as const };
         }
-        return bookedIds.has(node.id) ? { ...node, status: "confirmed" as const } : node;
+        return isBooked ? { ...node, status: "confirmed" as const } : node;
       });
 
       // Sort all items by date, then by time
@@ -228,77 +272,19 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
   const nodesToDisplay = isEnriching ? trip.nodes : enrichedNodes;
   console.log("Displaying nodes:", nodesToDisplay.length, "isEnriching:", isEnriching);
 
-  const handleAddNode = () => {
-    if (!nodeTitle || !nodeDate) return;
-    if (nodeType === "attraction") {
-      const input: AttractionPlanInput = {
-        name: nodeTitle,
-        location: nodeSubtitle,
-        gmapsLink: nodeGmapsLink,
-        visitDate: nodeDate,
-        visitTime: nodeTime,
-        durationMinutes: Number(nodeDuration) || 120,
-        cost: Number(nodeCost) || 0,
-      };
+  // Keep stable refs so the effect below doesn't re-run when these change
+  const tripRef = useRef(trip);
+  tripRef.current = trip;
+  const onUpdateTripRef = useRef(onUpdateTrip);
+  onUpdateTripRef.current = onUpdateTrip;
 
-      const savePromise = selectedCatalogMatch
-        ? saveCatalogAttraction(trip.id, CURRENT_USER_ID, selectedCatalogMatch, {
-            ...input,
-            durationMinutes: Number(nodeDuration) || selectedCatalogMatch.durationMinutes || 120,
-            cost: nodeCost ? Number(nodeCost) : selectedCatalogMatch.price,
-          })
-        : saveManualAttraction(trip.id, CURRENT_USER_ID, input);
-
-      savePromise
-        .then(async () => {
-          const attractions = await fetchAttractionsByTripId(trip.id, trip.currency);
-          setEnrichedNodes((prev) => {
-            const nonAttractions = prev.filter((node) => node.type !== "attraction");
-            return sortNodes([...nonAttractions, ...attractions]);
-          });
-          toast({
-            title: "Attraction added",
-            description: selectedCatalogMatch
-              ? `${selectedCatalogMatch.name} saved from catalog.`
-              : `${nodeTitle} added to your trip.`,
-          });
-          setAddNodeOpen(false);
-          resetForm();
-        })
-        .catch((error) => {
-          console.error("Failed to add attraction:", error);
-          toast({
-            title: "Failed to add attraction",
-            description: error instanceof Error ? error.message : "Unknown error",
-            variant: "destructive",
-          });
-        });
-      return;
+  // Update parent with current total cost when nodes change (refs prevent infinite loop)
+  useEffect(() => {
+    if (onUpdateTripRef.current && !isEnriching) {
+      const totalSpent = nodesToDisplay.reduce((sum, node) => sum + (node.cost || 0), 0);
+      onUpdateTripRef.current({ ...tripRef.current, spent: totalSpent });
     }
-
-    const newNode: ItineraryNode = {
-      id: `n-${Date.now()}`,
-      type: nodeType,
-      title: nodeTitle,
-      subtitle: nodeSubtitle,
-      date: nodeDate,
-      time: nodeTime,
-      duration: nodeDuration || undefined,
-      cost: Number(nodeCost) || 0,
-      currency: trip.currency,
-      status: "pending",
-      details: {},
-    };
-    const updatedTrip = {
-      ...trip,
-      nodes: [...trip.nodes, newNode],
-      spent: trip.spent + (Number(nodeCost) || 0),
-    };
-    onUpdateTrip?.(updatedTrip);
-    toast({ title: "Node added", description: `${nodeTitle} added to itinerary` });
-    setAddNodeOpen(false);
-    resetForm();
-  };
+  }, [nodesToDisplay, isEnriching]);
 
   // Group nodes by date
   const nodesByDate = nodesToDisplay.reduce(
@@ -309,12 +295,6 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
     },
     {} as Record<string, ItineraryNode[]>
   );
-
-  const typeConfig = {
-    flight: { icon: Plane, label: "Flight", color: "bg-accent text-accent-foreground" },
-    hotel: { icon: Building2, label: "Hotel", color: "bg-node-hotel text-accent-foreground" },
-    attraction: { icon: MapPin, label: "Attraction", color: "bg-node-attraction text-accent-foreground" },
-  };
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -327,26 +307,32 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
           <div>
             <h1 className="text-sm font-medium tracking-tight">{trip.name}</h1>
             <p className="text-[10px] text-muted-foreground font-mono">
-              {trip.destination} · {trip.startDate} → {trip.endDate}
+              {trip.destination} · {formatFullDate(trip.startDate)} → {formatFullDate(trip.endDate)}
             </p>
+            {(() => {
+              const totalSpent = nodesToDisplay.reduce((sum, node) => sum + (node.cost || 0), 0);
+              const isOver = totalSpent > trip.budget;
+              return (
+                <p className="text-[10px] font-mono mt-0.5">
+                  <span className={isOver ? "text-destructive" : "text-foreground"}>
+                    ${totalSpent.toLocaleString()}
+                  </span>
+                  <span className="text-muted-foreground"> spent / ${trip.budget.toLocaleString()} {trip.currency}</span>
+                </p>
+              );
+            })()}
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <CollaboratorAvatars collaborators={trip.collaborators} />
+          <CollaboratorAvatars collaborators={collaboratorsWithStatus} />
+          <NotificationBell />
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1.5"
-            onClick={() => setAddNodeOpen(true)}
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => navigate("/profile")}
           >
-            <Plus className="w-3.5 h-3.5" />
-            Add
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Share2 className="w-3.5 h-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7">
-            <Settings className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5" />
           </Button>
         </div>
       </header>
@@ -366,7 +352,8 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={() => setAddNodeOpen(true)}
+              onClick={() => setIsAddCustomOpen(true)}
+              title="Add Custom Attraction"
             >
               <Plus className="w-3.5 h-3.5" />
             </Button>
@@ -382,7 +369,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                   variant="outline"
                   size="sm"
                   className="text-xs"
-                  onClick={() => setAddNodeOpen(true)}
+                  onClick={() => navigate('/search?type=flights')}
                 >
                   Add your first item
                 </Button>
@@ -392,11 +379,7 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
               <div key={date}>
                 <div className="px-4 py-2 sticky top-0 bg-card/95 backdrop-blur-sm z-10">
                   <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                    {new Date(date).toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {formatDisplayDate(date)}
                   </span>
                 </div>
                 {nodes.map((node) => (
@@ -404,17 +387,8 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
                     key={node.id}
                     node={node}
                     isSelected={selectedNode?.id === node.id}
-                    onClick={(n) => {
-                      setSelectedNode(n);
-                      navigate("/details", {
-                        state: {
-                          itemType: "node",
-                          data: n,
-                          tripId: trip.id,
-                          memberIds: trip.member_ids ?? [],
-                        },
-                      });
-                    }}
+                    onClick={(n) => setSelectedNode(n)}
+                    onDelete={node.status !== "confirmed" ? handleDeleteNode : undefined}
                     isFirst={false}
                   />
                 ))}
@@ -429,8 +403,27 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
         </div>
 
         {/* Center: Detail view */}
-        <div className="flex-1 pane-border flex flex-col">
-          <DetailPane node={selectedNode} />
+        <div className="flex-1 pane-border flex flex-col overflow-hidden">
+          <DetailPane
+            node={selectedNode}
+            trip={trip}
+            onClose={() => setSelectedNode(null)}
+            onDelete={selectedNode?.status !== "confirmed" ? handleDeleteNode : undefined}
+            onNodeBooked={(nodeId) =>
+              setEnrichedNodes((prev) =>
+                prev.map((n) => (n.id === nodeId ? { ...n, status: "confirmed" as const } : n))
+              )
+            }
+            onNodeRemoved={(nodeId) => {
+              setEnrichedNodes((prev) => prev.filter((n) => n.id !== nodeId));
+              setSelectedNode(null);
+            }}
+            onNodeUpdated={(updated) =>
+              setEnrichedNodes((prev) =>
+                prev.map((n) => (n.id === updated.id ? updated : n))
+              )
+            }
+          />
         </div>
 
         {/* Right: Ledger & Social */}
@@ -439,198 +432,81 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
         </div>
       </div>
 
-      {/* Add Node Dialog */}
-      <Dialog open={addNodeOpen} onOpenChange={setAddNodeOpen}>
-        <DialogContent className="sm:max-w-md bg-card border-border">
+      {/* Add Custom Attraction Dialog */}
+      <Dialog open={isAddCustomOpen} onOpenChange={setIsAddCustomOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-sm font-medium tracking-tight">Add to Itinerary</DialogTitle>
+            <DialogTitle>Add Custom Attraction</DialogTitle>
           </DialogHeader>
-
-          {/* Type selector */}
-          <div className="flex gap-2">
-            {(["flight", "hotel", "attraction"] as const).map((type) => {
-              const cfg = typeConfig[type];
-              const Icon = cfg.icon;
-              return (
-                <button
-                  key={type}
-                  onClick={() => setNodeType(type)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-sm text-xs font-mono uppercase tracking-wider transition-colors ${
-                    nodeType === type ? cfg.color : "bg-secondary text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {cfg.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="space-y-3 mt-2">
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                Title
-              </label>
-              <input
-                className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder={nodeType === "flight" ? "SFO → NRT" : nodeType === "hotel" ? "Hotel name" : "Attraction name"}
-                value={nodeTitle}
-                onChange={(e) => setNodeTitle(e.target.value)}
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                placeholder="e.g., Private Food Tour"
+                value={customAttraction.name}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, name: e.target.value })}
               />
             </div>
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                Subtitle
-              </label>
-              <input
-                className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder={nodeType === "flight" ? "Japan Airlines JL001" : nodeType === "hotel" ? "Shibuya, Tokyo" : "Guided tour"}
-                value={nodeSubtitle}
-                onChange={(e) => setNodeSubtitle(e.target.value)}
+            <div className="grid gap-2">
+              <Label htmlFor="subtitle">Subtitle</Label>
+              <Input
+                id="subtitle"
+                placeholder="e.g., Local Market"
+                value={customAttraction.location}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, location: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                  value={nodeDate}
-                  onChange={(e) => setNodeDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Time
-                </label>
-                <input
-                  type="time"
-                  className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                  value={nodeTime}
-                  onChange={(e) => setNodeTime(e.target.value)}
-                />
-              </div>
+            <div className="grid gap-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={customAttraction.visitDate}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, visitDate: e.target.value })}
+              />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Cost ({trip.currency})
-                </label>
-                <input
-                  type="number"
-                  className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                  placeholder="0"
-                  value={nodeCost}
-                  onChange={(e) => setNodeCost(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                  Duration
-                </label>
-              <input
+            <div className="grid gap-2">
+              <Label htmlFor="time">Time</Label>
+              <Input
+                id="time"
+                type="time"
+                value={customAttraction.visitTime}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, visitTime: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="cost">Cost</Label>
+              <Input
+                id="cost"
                 type="number"
-                className="w-full h-9 bg-secondary border border-border rounded-sm px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder="120"
-                value={nodeDuration}
-                onChange={(e) => setNodeDuration(e.target.value)}
+                placeholder="e.g., 150"
+                value={customAttraction.cost}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, cost: e.target.value })}
               />
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="duration">Duration (minutes)</Label>
+              <Input
+                id="duration"
+                type="number"
+                placeholder="e.g., 120"
+                value={customAttraction.durationMinutes}
+                onChange={(e) => setCustomAttraction({ ...customAttraction, durationMinutes: e.target.value })}
+              />
             </div>
-            {nodeType === "attraction" && (
-              <>
-                <div>
-                  <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1 block">
-                    Google Maps Link
-                  </label>
-                  <Input
-                    className="h-9 bg-secondary border-border text-sm"
-                    placeholder="https://maps.google.com/..."
-                    value={nodeGmapsLink}
-                    onChange={(e) => setNodeGmapsLink(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block">
-                      Catalog Recommendation
-                    </label>
-                    {isSearchingCatalog && (
-                      <span className="text-[10px] font-mono text-muted-foreground">Searching...</span>
-                    )}
-                  </div>
-
-                  {catalogRecommendations.length > 0 ? (
-                    <div className="space-y-2 rounded-sm border border-border p-2">
-                      {catalogRecommendations.map((recommendation) => {
-                        const isSelected = selectedCatalogMatch?.id === recommendation.id;
-                        return (
-                          <button
-                            key={recommendation.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCatalogMatch(recommendation);
-                              setNodeTitle(recommendation.name);
-                              setNodeSubtitle(recommendation.address);
-                              setNodeGmapsLink(recommendation.gmapsLink ?? "");
-                              setNodeDuration(String(recommendation.durationMinutes ?? 120));
-                              setNodeCost(String(recommendation.price ?? 0));
-                            }}
-                            className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
-                              isSelected
-                                ? "border-node-attraction bg-node-attraction/10"
-                                : "border-border bg-secondary/30 hover:bg-secondary/50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{recommendation.name}</p>
-                                <p className="text-[11px] text-muted-foreground truncate">{recommendation.address}</p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <p className="text-[10px] font-mono text-muted-foreground">
-                                  {recommendation.price === 0 ? "Free" : `$${recommendation.price}`}
-                                </p>
-                                <p className="text-[10px] font-mono text-muted-foreground">
-                                  {recommendation.durationMinutes}m
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-sm border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground">
-                      {nodeTitle.trim().length < 3
-                        ? "Start typing an attraction name to check the catalog first."
-                        : "No close catalog match found. You can still add this attraction manually."}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
           </div>
-
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="ghost" size="sm" onClick={() => { setAddNodeOpen(false); resetForm(); }}>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddCustomOpen(false)}>
               Cancel
             </Button>
-            <Button
-              variant="accent"
-              size="sm"
-              onClick={handleAddNode}
-              disabled={!nodeTitle || !nodeDate}
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Add {typeConfig[nodeType].label}
+            <Button onClick={handleSaveCustomAttraction}>
+              Add Attraction
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

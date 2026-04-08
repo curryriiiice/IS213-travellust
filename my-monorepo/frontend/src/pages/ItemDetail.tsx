@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Header } from "@/components/Header";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +13,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ArrowLeft,
-  Compass,
   Plane,
   Building2,
   MapPin,
@@ -35,8 +34,75 @@ import type { AttractionOffer } from "@/data/attractionData";
 import type { ItineraryNode } from "@/types/trip";
 import { bookAttraction, bookFlight, cancelAttractionBooking, bookHotel } from "@/api/booking";
 import { deletePlannedAttraction, updatePlannedAttraction } from "@/api/plan";
+import { getCurrentUserId, getUser } from "@/lib/auth";
+import { fetchAllClients, type ExternalClient } from "@/api/collaborator";
 
-const MAIN_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+// Helper to convert ItineraryNode to HotelOffer when coming from booked tickets
+function convertToHotelOffer(node: ItineraryNode): HotelOffer {
+  return {
+    id: node.id,
+    name: node.title,
+    chain: "",
+    city: node.details?.location || "",
+    address: node.details?.address || "",
+    starRating: parseFloat(node.details?.overall_rating || "0"),
+    overall_rating: parseFloat(node.details?.overall_rating || "0"),
+    reviews: 0,
+    price: node.cost,
+    currency: node.currency,
+    roomType: node.details?.room_type || "",
+    amenities: node.details?.amenities?.split(",").map(a => a.trim()) || [],
+    thumbnail: "",
+    fallbackThumbnail: undefined,
+    freeCancellation: node.details?.free_cancellation === "true",
+    breakfastIncluded: node.details?.breakfast_included === "true",
+    distanceFromCenter: "",
+    locationRating: undefined,
+  };
+}
+
+// Helper to convert ItineraryNode to FlightOffer when coming from booked tickets
+function convertToFlightOffer(node: ItineraryNode): FlightOffer {
+  // Helper function to format time from a time string
+  const formatTimeFromString = (timeStr: string): string => {
+    const match = timeStr.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (match) {
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12;
+      return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`;
+    }
+    return timeStr;
+  };
+
+  return {
+    id: node.id,
+    airline: node.title,
+    airlineCode: "",
+    flightNumber: node.details?.flight_number || "",
+    origin: node.details?.origin || "",
+    originCity: node.details?.origin || "",
+    destination: node.details?.destination || "",
+    destinationCity: node.details?.destination || "",
+    departureTime: formatTimeFromString(node.time),
+    departureTimeConverted: formatTimeFromString(node.time),
+    arrivalTime: "", // Calculated from departure + duration
+    arrivalTimeConverted: "",
+    arrivalDateTime: node.details?.datetime_arrival?.replace(" ", "T") || "", // Use API datetime if available
+    duration: node.duration || "",
+    durationMinutes: 0, // Extracted from duration string
+    aircraft: node.details?.aircraft_type || "",
+    cabin: (node.details?.cabin || "economy") as "economy",
+    price: node.cost,
+    currency: node.currency,
+    legroom: node.details?.legroom || "",
+    co2Kg: parseFloat(node.details?.co2_kg || "0"),
+    externalLink: node.details?.external_link || "",
+  };
+}
+
+const MAIN_USER_ID = getCurrentUserId();
 
 function addMinutesToTime(time: string, minutesToAdd: number): string {
   const [hours, minutes] = time.split(":").map(Number);
@@ -69,19 +135,50 @@ const ItemDetail = () => {
   const location = useLocation();
   const state = location.state as (ItemState & { fromBookings?: boolean }) | null;
 
+  // Extract fromBookings flag with default false
+  const fromBookings = state?.fromBookings || false;
+
   // Passenger selection modal state
   const [isPassengerModalOpen, setIsPassengerModalOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [isBooking, setIsBooking] = useState(false);
+  const [clients, setClients] = useState<ExternalClient[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState(false);
+
+  // Fetch clients when passenger modal opens
+  useEffect(() => {
+    if (isPassengerModalOpen && clients.length === 0) {
+      setIsLoadingClients(true);
+      fetchAllClients()
+        .then((fetchedClients) => {
+          setClients(fetchedClients);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch clients:", error);
+        })
+        .finally(() => {
+          setIsLoadingClients(false);
+        });
+    }
+  }, [isPassengerModalOpen, clients.length]);
+
+  // Helper to get user name from ID
+  const getUserName = (userId: string): string => {
+    const client = clients.find((c) => c.client_uuid === userId);
+    if (client) return client.name;
+
+    // Fallback to current user from localStorage
+    const currentUser = getUser();
+    if (currentUser && currentUser.id === userId) return currentUser.name;
+
+    return userId;
+  };
 
   if (!state) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
           <p className="text-sm text-muted-foreground">No item data found</p>
-          <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
-            <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Go Back
-          </Button>
         </div>
       </div>
     );
@@ -99,6 +196,18 @@ const ItemDetail = () => {
 
   // For node-type flight items: open passenger selection modal
   const handleBookFlight = () => {
+    if (state.itemType !== "node") return;
+    const memberIds = (state as { memberIds?: string[] }).memberIds ?? [];
+    // Pre-select main user if they are in the list
+    const initialSelection = memberIds.includes(MAIN_USER_ID)
+      ? [MAIN_USER_ID]
+      : [];
+    setSelectedUserIds(initialSelection);
+    setIsPassengerModalOpen(true);
+  };
+
+  // For node-type attraction items: open passenger selection modal
+  const handleBookAttraction = () => {
     if (state.itemType !== "node") return;
     const memberIds = (state as { memberIds?: string[] }).memberIds ?? [];
     // Pre-select main user if they are in the list
@@ -161,6 +270,13 @@ const ItemDetail = () => {
           title: "🏨 Hotel Booking Successful",
           description: `Hotel booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}. Status updated to Confirmed.`,
         });
+      } else if (nodeType === "attraction") {
+        await bookAttraction(tripId, MAIN_USER_ID, selectedUserIds, itemId);
+        setIsPassengerModalOpen(false);
+        toast({
+          title: "🎢 Attraction Booking Successful",
+          description: `Attraction booked for ${selectedUserIds.length} guest${selectedUserIds.length > 1 ? "s" : ""}. Status updated to Confirmed.`,
+        });
       } else {
         throw new Error(`Unsupported booking type: ${nodeType}`);
       }
@@ -183,21 +299,24 @@ const ItemDetail = () => {
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "flight";
   const isNodeHotel =
     state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "hotel";
+  const isNodeAttraction =
+    state.itemType === "node" && (state as { data: ItineraryNode }).data.type === "attraction";
 
-  const onBook =
-    // For node-type hotel: always show book button (even from bookings)
-    isNodeHotel
-    ? handleBookFlight
-    // For node-type flight: show book button (hide if from bookings)
-    : isNodeFlight
-    ? state.fromBookings ? undefined : handleBookFlight
-    // For attraction: add to trip
-    : state.itemType === "attraction"
-    ? handleAddAttractionToTrip
-    // For generic flight/hotel: show book button (hide if from bookings)
-    : state.itemType === "flight" || state.itemType === "hotel"
-    ? state.fromBookings ? undefined : handleBookGeneric
-    : undefined;
+  // Hide booking actions when coming from BookedTickets
+  // All booked items should be read-only with disabled buttons
+  const onBook = fromBookings
+    ? undefined // Disable all booking actions for booked items
+    : (isNodeHotel
+      ? handleBookFlight
+      : isNodeFlight
+      ? handleBookFlight
+      : isNodeAttraction
+      ? handleBookAttraction
+      : state.itemType === "attraction"
+      ? handleAddAttractionToTrip
+      : state.itemType === "flight" || state.itemType === "hotel"
+      ? handleBookGeneric
+      : undefined);
 
   // Member IDs for modal
   const memberIds =
@@ -207,36 +326,44 @@ const ItemDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Nav */}
-      <header className="h-12 border-b border-border flex items-center justify-between px-6 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <button onClick={() => navigate(-1)} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Compass className="w-4 h-4 text-accent" />
-            <span className="text-sm font-medium tracking-tight">TravelLust</span>
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => navigate("/trips")}>
-            My Trips
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate("/profile")}>
-            <User className="w-4 h-4" />
-          </Button>
-        </div>
-      </header>
+      <Header showBackButton showNotifications={false}>
+        {fromBookings && (
+          <Badge className="bg-green-500/10 text-green-700 hover:bg-green-500/20">
+            <Check className="w-3 h-3 mr-1" />
+            Booked
+          </Badge>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => navigate("/trips")}
+        >
+          My Trips
+        </Button>
+      </Header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
-        {state.itemType === "flight" && <FlightDetail flight={state.data} onBook={onBook} />}
-        {state.itemType === "hotel" && <HotelDetail hotel={state.data} onBook={onBook} />}
-        {state.itemType === "attraction" && <AttractionDetail attraction={state.data} onBook={onBook} />}
-        {state.itemType === "node" && (
+        {fromBookings && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+            <Check className="w-6 h-6 text-green-600" />
+            <div>
+              <h3 className="text-sm font-semibold text-green-800">Already Booked</h3>
+              <p className="text-xs text-green-700">
+                This {state?.itemType === "flight" ? "flight" : state?.itemType === "hotel" ? "hotel" : "attraction"} has been added to your trip.
+              </p>
+            </div>
+          </div>
+        )}
+        {state?.itemType === "flight" && <FlightDetail flight={state.data} onBook={onBook} />}
+        {state?.itemType === "hotel" && <HotelDetail hotel={state.itemType === "node" ? convertToHotelOffer(state.data) : state.data} onBook={onBook} />}
+        {state?.itemType === "attraction" && <AttractionDetail attraction={state.data} onBook={onBook} />}
+        {state?.itemType === "node" && (
           <NodeDetail
             node={state.data}
             tripId={state.tripId}
             onBook={onBook}
+            fromBookings={fromBookings}
           />
         )}
       </div>
@@ -262,43 +389,48 @@ const ItemDetail = () => {
                 <p className="text-xs text-muted-foreground">
                   No member IDs found for this trip.
                 </p>
-                <p className="text-[10px] text-muted-foreground font-mono">
-                  Main user ID will be used: {MAIN_USER_ID.slice(0, 8)}…
-                </p>
               </div>
             ) : (
               <div className="space-y-1 max-h-64 overflow-y-auto">
-                {memberIds.map((uid) => {
-                  const isSelected = selectedUserIds.includes(uid);
-                  const isMainUser = uid === MAIN_USER_ID;
-                  return (
-                    <button
-                      key={uid}
-                      onClick={() => togglePassenger(uid)}
-                      className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-sm transition-all border ${
-                        isSelected
-                          ? "bg-accent/10 border-accent/40 text-foreground"
-                          : "border-transparent hover:bg-secondary/60 text-muted-foreground"
-                      }`}
-                    >
-                      <div
-                        className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${
+                {isLoadingClients ? (
+                  <div className="text-center py-4">
+                    <Loader2 className="w-5 h-5 text-muted-foreground/40 mx-auto animate-spin" />
+                    <p className="text-xs text-muted-foreground mt-2">Loading users...</p>
+                  </div>
+                ) : (
+                  memberIds.map((uid) => {
+                    const isSelected = selectedUserIds.includes(uid);
+                    const isMainUser = uid === MAIN_USER_ID;
+                    const userName = getUserName(uid);
+                    return (
+                      <button
+                        key={uid}
+                        onClick={() => togglePassenger(uid)}
+                        className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-sm transition-all border ${
                           isSelected
-                            ? "bg-accent border-accent"
-                            : "border-border"
+                            ? "bg-accent/10 border-accent/40 text-foreground"
+                            : "border-transparent hover:bg-secondary/60 text-muted-foreground"
                         }`}
                       >
-                        {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-xs font-mono break-all">{uid}</p>
-                        {isMainUser && (
-                          <p className="text-[10px] text-accent font-mono">you · main user</p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+                        <div
+                          className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected
+                              ? "bg-accent border-accent"
+                              : "border-border"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium">{userName}</p>
+                          {isMainUser && (
+                            <p className="text-[10px] text-accent font-mono">you</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             )}
 
@@ -349,6 +481,66 @@ const ItemDetail = () => {
 };
 
 function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => void }) {
+  // Safely access cabin property to prevent undefined errors
+  const cabin = flight?.cabin || "economy";
+  const cabinClass = cabin?.replace?.(/_/g, " ") || cabin || "economy";
+
+  // Normalize duration format (convert "3H 35min" to "15h 35min", etc.)
+  const normalizeDuration = (durationStr: string): string => {
+    if (!durationStr) return '';
+
+    const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+    const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+    const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+    const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+    if (hours > 0 && minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else if (minutes > 0) {
+      return `${minutes}m`;
+    }
+    return durationStr;
+  };
+
+  // Airport code to timezone mapping (same as NodeDetail)
+  const getAirportTimezone = (airportCode: string): string => {
+    const timezoneMap: Record<string, string> = {
+      "SIN": "Asia/Singapore",
+      "JFK": "America/New_York",
+      "LGA": "America/New_York",
+      "EWR": "America/New_York",
+      "LHR": "Europe/London",
+      "CDG": "Europe/Paris",
+      "FRA": "Europe/Berlin",
+      "AMS": "Europe/Amsterdam",
+      "HKG": "Asia/Hong_Kong",
+      "NRT": "Asia/Tokyo",
+      "HND": "Asia/Tokyo",
+      "SYD": "Australia/Sydney",
+      "MEL": "Australia/Melbourne",
+      "DXB": "Asia/Dubai",
+      "BKK": "Asia/Bangkok",
+      "ICN": "Asia/Seoul",
+      "PEK": "Asia/Shanghai",
+      "PVG": "Asia/Shanghai",
+      "SFO": "America/Los_Angeles",
+      "LAX": "America/Los_Angeles",
+      "SEA": "America/Los_Angeles",
+      "ORD": "America/Chicago",
+      "DFW": "America/Chicago",
+      "MIA": "America/New_York",
+      "DEN": "America/Denver",
+      "ATL": "America/New_York",
+    };
+    return timezoneMap[airportCode.toUpperCase()] || "UTC";
+  };
+
+  const originTimezone = getAirportTimezone(flight.origin);
+  const destinationTimezone = getAirportTimezone(flight.destination);
+
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
       {/* Hero */}
@@ -359,10 +551,10 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
             <span className="text-[10px] font-mono uppercase tracking-widest text-accent">Flight</span>
           </div>
           <h1 className="text-xl font-medium tracking-tight">
-            {flight.origin} → {flight.destination}
+            {flight?.origin} → {flight?.destination}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {flight.airline} · {flight.flightNumber}
+            {flight?.airline} · {flight?.flightNumber}
           </p>
         </div>
 
@@ -370,12 +562,15 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
         <div className="px-6 py-6">
           <div className="flex items-center justify-between mb-6">
             <div className="text-center">
-              <p className="text-2xl font-mono tabular-nums font-medium">{flight.departureTime}</p>
+              <p className="text-2xl font-mono tabular-nums font-medium">
+                {flight.departureTimeConverted || flight.departureTime}
+              </p>
               <p className="text-sm text-muted-foreground font-mono">{flight.origin}</p>
               <p className="text-xs text-muted-foreground">{flight.originCity}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{originTimezone}</p>
             </div>
             <div className="flex-1 flex flex-col items-center gap-1 px-6">
-              <span className="text-xs text-muted-foreground font-mono">{flight.duration}</span>
+              <span className="text-xs text-muted-foreground font-mono">{normalizeDuration(flight.duration)}</span>
               <div className="w-full flex items-center gap-1">
                 <div className="flex-1 h-px bg-border" />
                 <Plane className="w-3 h-3 text-muted-foreground" />
@@ -385,17 +580,20 @@ function FlightDetail({ flight, onBook }: { flight: FlightOffer; onBook?: () => 
               </span>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-mono tabular-nums font-medium">{flight.arrivalTime}</p>
+              <p className="text-2xl font-mono tabular-nums font-medium">
+                {flight.arrivalTimeConverted || flight.arrivalTime}
+              </p>
               <p className="text-sm text-muted-foreground font-mono">{flight.destination}</p>
               <p className="text-xs text-muted-foreground">{flight.destinationCity}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{destinationTimezone}</p>
             </div>
           </div>
 
           {/* Details grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 py-4 border-t border-border">
-            <InfoBlock icon={Plane} label="Aircraft" value={flight.aircraft} />
-            <InfoBlock icon={Shield} label="Cabin" value={flight.cabin.replace("_", " ")} />
-            <InfoBlock icon={User} label="Legroom" value={flight.legroom} />
+            <InfoBlock icon={Plane} label="Aircraft" value={flight?.aircraft || "N/A"} />
+            <InfoBlock icon={Shield} label="Cabin" value={cabinClass} />
+            <InfoBlock icon={User} label="Legroom" value={flight?.legroom || "N/A"} />
           </div>
 
           <div className="flex items-center gap-4 py-3 border-t border-border text-xs text-muted-foreground">
@@ -605,10 +803,12 @@ function NodeDetail({
   node,
   tripId,
   onBook,
+  fromBookings = false,
 }: {
   node: ItineraryNode;
   tripId?: string;
   onBook?: () => void;
+  fromBookings?: boolean;
 }) {
   const typeConfig = {
     flight: { icon: Plane, color: "text-accent", label: "Flight" },
@@ -654,7 +854,23 @@ function NodeDetail({
 
   const formatDateTime = (dateTimeStr: string, airportCode: string): string => {
     try {
-      const date = new Date(dateTimeStr);
+      let date: Date;
+      // Handle different datetime formats
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
       const timezone = getAirportTimezone(airportCode);
       return new Intl.DateTimeFormat("en-US", {
         timeZone: timezone,
@@ -671,47 +887,365 @@ function NodeDetail({
     }
   };
 
+  const formatDateTimeNoTimezone = (dateTimeStr: string): string => {
+    try {
+      let date: Date;
+      // Handle different datetime formats
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
+      return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).format(date).replace(", ", " at ");
+    } catch {
+      return dateTimeStr;
+    }
+  };
+
+  const formatDateOnly = (dateTimeStr: string): string => {
+    try {
+      let date: Date;
+      // Handle different datetime formats
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
+      return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }).format(date);
+    } catch {
+      return dateTimeStr;
+    }
+  };
+
+  // Format time from datetime string, respecting timezone
+  const formatTimeFromDateTime = (dateTimeStr: string, airportCode?: string): string => {
+    try {
+      // Handle different datetime formats
+      let date: Date;
+
+      // Try parsing as ISO format first
+      if (dateTimeStr.includes('T') || dateTimeStr.includes(' ')) {
+        // Replace space with T for ISO format
+        const normalizedDateTime = dateTimeStr.replace(' ', 'T');
+        date = new Date(normalizedDateTime);
+      } else {
+        // If it's just a time, parse it as today's time
+        const [hours, minutes] = dateTimeStr.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          date = new Date();
+          date.setHours(hours, minutes, 0, 0);
+        } else {
+          return dateTimeStr;
+        }
+      }
+
+      const timezone = airportCode ? getAirportTimezone(airportCode) : undefined;
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(date);
+    } catch {
+      return dateTimeStr;
+    }
+  };
+
+  // Parse time to 24-hour format for calculations (handles both 12-hour and 24-hour formats)
+  const parseTimeTo24Hour = (timeStr: string): { hours: number; minutes: number } => {
+    // Try to match 12-hour format first (e.g., "05:05 PM", "5:05 PM", "05:05 PM")
+    let match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)\b/i);
+
+    if (match) {
+      let hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const meridiem = match[3]?.toUpperCase();
+
+      if (meridiem === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (meridiem === 'AM' && hours === 12) {
+        hours = 0;
+      }
+
+      return { hours, minutes };
+    }
+
+    // If no AM/PM found, try 24-hour format (e.g., "17:05", "09:05")
+    match = timeStr.match(/(\d{1,2}):(\d{2})/);
+    if (match) {
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+
+      if (!Number.isNaN(hours) && !Number.isNaN(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+        return { hours, minutes };
+      }
+    }
+
+    return { hours: 0, minutes: 0 };
+  };
+
+  // Format 24-hour time to 12-hour time with AM/PM
+  const format24HourTo12Hour = (hours: number, minutes: number): string => {
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${String(displayHours)}:${String(minutes).padStart(2, '0')} ${period}`;
+  };
+
+  // Add minutes to a formatted time string (handles 12-hour format)
+  const addMinutesToFormattedTime = (timeStr: string, minutesToAdd: number): string => {
+    const { hours, minutes } = parseTimeTo24Hour(timeStr);
+    const totalMinutes = hours * 60 + minutes + minutesToAdd;
+    const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+    const nextHours = Math.floor(normalized / 60);
+    const nextMinutes = normalized % 60;
+    return format24HourTo12Hour(nextHours, nextMinutes);
+  };
+
+  // Normalize duration format (convert "3H 35min" to "15h 35min", etc.)
+  const normalizeDuration = (durationStr: string): string => {
+    if (!durationStr) return '';
+
+    // Handle various formats: "3H 35min", "15h 35min", "15h", "35min", etc.
+    const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+    const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+    const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+    const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+    // Format consistently as "Xh Ym" or "Xh" or "Ym"
+    if (hours > 0 && minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (hours > 0) {
+      return `${hours}h`;
+    } else if (minutes > 0) {
+      return `${minutes}m`;
+    }
+    return durationStr;
+  };
+
+  // Calculate duration from departure and arrival datetimes (for flights)
+  const calculateDurationFromDatetimes = (): { hours: number; minutes: number; formatted: string } => {
+    if (!node.details.datetime_departure || !node.details.datetime_arrival) {
+      // Fall back to existing duration if datetimes not available
+      const durationStr = node.duration || "";
+      const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+      const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+      const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+      const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+      return {
+        hours,
+        minutes,
+        formatted: hours > 0 && minutes > 0 ? `${hours}h ${minutes}m` : hours > 0 ? `${hours}h` : `${minutes}m`
+      };
+    }
+
+    try {
+      const departure = new Date(node.details.datetime_departure.replace(' ', 'T'));
+      const arrival = new Date(node.details.datetime_arrival.replace(' ', 'T'));
+      const diffMs = departure.getTime() - arrival.getTime();
+      const diffMinutes = Math.floor(Math.abs(diffMs) / (1000 * 60));
+
+      const hours = Math.floor(diffMinutes / 60);
+      const minutes = diffMinutes % 60;
+
+      return {
+        hours,
+        minutes,
+        formatted: hours > 0 && minutes > 0 ? `${hours}h ${minutes}m` : hours > 0 ? `${hours}h` : `${minutes}m`
+      };
+    } catch {
+      // Fallback to existing duration
+      const durationStr = node.duration || "";
+      const hoursMatch = durationStr.match(/(\d+)\s*([hH])/);
+      const minutesMatch = durationStr.match(/(\d+)\s*([mM][iI][nN])/);
+
+      const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+      const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+      return {
+        hours,
+        minutes,
+        formatted: hours > 0 && minutes > 0 ? `${hours}h ${minutes}m` : hours > 0 ? `${hours}h` : `${minutes}m`
+      };
+    }
+  };
+
+  const isFlightNode = node.type === "flight";
+  const isAttractionNode = node.type === "attraction";
+  const isHotelNode = node.type === "hotel";
+
+  // Get the primary datetime to display for a node
+  const getPrimaryDateTime = (): { date: string; time: string; timezone?: string } => {
+    if (isFlightNode) {
+      // For flights, use departure datetime with origin timezone
+      const departureDateTime = node.details.datetime_departure || `${node.date}T${node.time}`;
+      const originAirport = node.details.origin || '';
+      const timezone = getAirportTimezone(originAirport);
+
+      let formattedTime: string;
+      try {
+        if (node.details.datetime_departure) {
+          // Use the same formatDateTime function as in details section for consistency
+          const fullFormatted = formatDateTime(departureDateTime, originAirport);
+          // Extract just the time part (e.g., "Apr 10, 2025, 5:05 PM SGT" -> "5:05 PM")
+          const timeMatch = fullFormatted.match(/(\d{1,2}:\d{2}\s*[AP]M)/);
+          formattedTime = timeMatch ? timeMatch[1] : fullFormatted;
+        } else {
+          const { hours, minutes } = parseTimeTo24Hour(node.time);
+          if (hours > 0 || minutes > 0) {
+            formattedTime = format24HourTo12Hour(hours, minutes);
+          } else {
+            formattedTime = node.time;
+          }
+        }
+      } catch {
+        const { hours, minutes } = parseTimeTo24Hour(node.time);
+        if (hours > 0 || minutes > 0) {
+          formattedTime = format24HourTo12Hour(hours, minutes);
+        } else {
+          formattedTime = node.time;
+        }
+      }
+
+      return {
+        date: formatDateOnly(departureDateTime),
+        time: formattedTime,
+        timezone: timezone,
+      };
+    } else if (isHotelNode) {
+      // For hotels, use check-in datetime
+      const checkInDateTime = node.details.datetime_check_in || `${node.date}T${node.time}`;
+      let formattedTime: string;
+      try {
+        if (node.details.datetime_check_in) {
+          formattedTime = formatTimeFromDateTime(checkInDateTime);
+        } else {
+          const { hours, minutes } = parseTimeTo24Hour(node.time);
+          if (hours > 0 || minutes > 0) {
+            formattedTime = format24HourTo12Hour(hours, minutes);
+          } else {
+            formattedTime = node.time;
+          }
+        }
+      } catch {
+        formattedTime = node.time;
+      }
+
+      return {
+        date: formatDateOnly(checkInDateTime),
+        time: formattedTime,
+      };
+    } else {
+      // For attractions and others, use the node's date and time
+      const visitDateTime = `${node.date}T${node.time}`;
+      let formattedTime: string;
+      try {
+        const { hours, minutes } = parseTimeTo24Hour(node.time);
+        if (hours > 0 || minutes > 0) {
+          formattedTime = format24HourTo12Hour(hours, minutes);
+        } else {
+          formattedTime = node.time;
+        }
+      } catch {
+        formattedTime = node.time;
+      }
+
+      return {
+        date: formatDateOnly(visitDateTime),
+        time: formattedTime,
+      };
+    }
+  };
+
+  const primaryDateTime = getPrimaryDateTime();
+  const calculatedDuration = calculateDurationFromDatetimes();
+
   const fieldLabelMap: Record<string, string> = {
+    // Flight fields
     flight_number: "Flight Number",
     aircraft_type: "Aircraft",
     co2_kg: "CO2 Consumption (kg)",
     datetime_departure: "Departure (Origin/Destination)",
     datetime_arrival: "Arrival (Origin/Destination)",
     external_link: "More Information",
+    // Hotel fields
+    name: "Name",
+    description: "Description",
+    amenities: "Amenities",
+    photos: "Photos",
+    overall_rating: "Overall Rating",
+    datetime_check_in: "Check In",
+    datetime_check_out: "Check Out Date",
+    nights: "Nights",
+    rate_per_night: "Nightly Rate",
   };
 
-  const excludedFields = ["price_sgd", "price_usd", "arrival_time"];
+  const excludedFields = ["price_sgd", "price_usd", "arrival_time", "lat", "long", "trip_id", "overall_rating", "nights"];
 
-  const isFlightNode = node.type === "flight";
-  const isAttractionNode = node.type === "attraction";
   // Determine if this is a bookable node (status not already confirmed)
-  const isHotelNode = node.type === "hotel";
   const isConfirmed = node.status === "confirmed";
   const isFreeAttraction = isAttractionNode && node.cost <= 0;
   const isCatalogAttraction =
     isAttractionNode &&
     node.sourceType === "catalog";
   const isManualAttraction = isAttractionNode && node.sourceType === "manual";
-  const showEditButton = isAttractionNode && Boolean(tripId);
+  const showEditButton = isAttractionNode && Boolean(tripId) && !fromBookings;
   const showAttractionBookButton =
     isAttractionNode &&
     Boolean(tripId) &&
     isCatalogAttraction &&
     !isFreeAttraction &&
-    !isConfirmed;
+    !isConfirmed &&
+    !fromBookings;
   const showAttractionCancelButton =
     isAttractionNode &&
     Boolean(tripId) &&
     isCatalogAttraction &&
     !isFreeAttraction &&
-    isConfirmed;
+    isConfirmed &&
+    !fromBookings;
   const showManualConfirmButton =
     isAttractionNode &&
     Boolean(tripId) &&
     isManualAttraction &&
     !isFreeAttraction &&
-    !isConfirmed;
-  const showGenericBookButton = Boolean(onBook);
+    !isConfirmed &&
+    !fromBookings;
+  const showGenericBookButton = Boolean(onBook) && !fromBookings;
+  const showBookedButton = fromBookings && isConfirmed;
   const displayStatus =
     isAttractionNode && isFreeAttraction
       ? "Added"
@@ -813,35 +1347,6 @@ function NodeDetail({
       minutes += 1440;
     }
     setEditDuration(String(minutes));
-  };
-
-  const handleBookAttraction = async () => {
-    if (!tripId) {
-      toast({
-        title: "Booking failed",
-        description: "Trip ID is missing for this attraction.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsBookingAttraction(true);
-    try {
-      await bookAttraction(tripId, MAIN_USER_ID, node.id);
-      toast({
-        title: "Attraction booked",
-        description: `${node.title} is now booked for your trip.`,
-      });
-      window.history.back();
-    } catch (error) {
-      toast({
-        title: "Booking failed",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setIsBookingAttraction(false);
-    }
   };
 
   const handleConfirmManualAttraction = async () => {
@@ -952,16 +1457,23 @@ function NodeDetail({
           {node.subtitle && <p className="text-sm text-muted-foreground mt-0.5">{node.subtitle}</p>}
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 py-4 border-t border-border">
-            <InfoBlock icon={Clock} label="Date" value={new Date(node.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} />
-            <InfoBlock icon={Clock} label="Time" value={node.time} />
+            <InfoBlock icon={Clock} label="Date" value={primaryDateTime.date} />
+            <InfoBlock
+              icon={Clock}
+              label={isHotelNode ? "Check In Time" : "Time"}
+              value={`${primaryDateTime.time}${primaryDateTime.timezone ? ` (${primaryDateTime.timezone})` : ''}`}
+            />
             {isAttractionNode && (
               <InfoBlock
                 icon={Clock}
                 label="End Time"
-                value={addMinutesToTime(node.time, durationMinutesFromNode(node))}
+                value={addMinutesToFormattedTime(primaryDateTime.time, durationMinutesFromNode(node))}
               />
             )}
-            {node.duration && <InfoBlock icon={Clock} label="Duration" value={node.duration} />}
+            {isFlightNode && calculatedDuration.formatted && (
+              <InfoBlock icon={Clock} label="Duration" value={calculatedDuration.formatted} />
+            )}
+            {!isFlightNode && node.duration && <InfoBlock icon={Clock} label="Duration" value={normalizeDuration(node.duration)} />}
             <InfoBlock
               icon={Shield}
               label="Status"
@@ -1006,13 +1518,20 @@ function NodeDetail({
                       ) : key === "visit_time" ? (
                         <span>{node.time}</span>
                       ) : key === "duration_minutes" ? (
-                        <span>{node.duration || `${val}m`}</span>
-                      ) : key === "datetime_departure" || key === "datetime_arrival" ? (
+                        <span>{isFlightNode ? calculatedDuration.formatted : (node.duration || `${val}m`)}</span>
+                      ) : key === "rate_per_night" ? (
+                        <span>${val as string}</span>
+                      ) : key === "datetime_check_in" || key === "datetime_check_out" ? (
+                        <span>{formatDateTimeNoTimezone(val as string)}</span>
+                      ) : key === "datetime_departure" ? (
                         <div className="flex flex-col gap-1 mt-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">Origin ({node.details.origin || 'N/A'}):</span>
                             <span>{formatDateTime(val as string, node.details.origin || 'UTC')}</span>
                           </div>
+                        </div>
+                      ) : key === "datetime_arrival" ? (
+                        <div className="flex flex-col gap-1 mt-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground">Destination ({node.details.destination || 'N/A'}):</span>
                             <span>{formatDateTime(val as string, node.details.destination || 'UTC')}</span>
@@ -1028,7 +1547,7 @@ function NodeDetail({
           )}
         </div>
 
-        {(showGenericBookButton || showEditButton || showAttractionBookButton || showManualConfirmButton) && (
+        {(showGenericBookButton || showEditButton || showAttractionBookButton || showManualConfirmButton || showBookedButton) && (
           <div className="px-6 py-4 border-t border-border bg-secondary/30 flex items-center justify-between">
             <div>
               <span className="text-2xl font-mono tabular-nums font-medium">
@@ -1088,18 +1607,10 @@ function NodeDetail({
                 <Button
                   variant="accent"
                   size="lg"
-                  onClick={handleBookAttraction}
-                  disabled={isBookingAttraction}
+                  onClick={onBook}
+                  disabled={!onBook}
                 >
-                  {isBookingAttraction ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> Booking...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 mr-1.5" /> Book Attraction
-                    </>
-                  )}
+                  <Check className="w-4 h-4 mr-1.5" /> Book Attraction
                 </Button>
               )}
               {showGenericBookButton && (
@@ -1118,6 +1629,17 @@ function NodeDetail({
                       <Check className="w-4 h-4 mr-1.5" /> Book {cfg.label}
                     </>
                   )}
+                </Button>
+              )}
+              {showBookedButton && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  disabled
+                >
+                  <>
+                    <Check className="w-4 h-4 mr-1.5" /> Booked
+                  </>
                 </Button>
               )}
             </div>

@@ -1,16 +1,18 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { nodeColors, nodeColorsDot, nodeIcons, type ItineraryNode } from "@/types/trip";
-import { AlertTriangle, Clock } from "lucide-react";
+import { formatDisplayDate } from "@/lib/date-utils";
+import { AlertTriangle, Clock, Trash2 } from "lucide-react";
 
 interface TimelineNodeProps {
   node: ItineraryNode;
   isSelected: boolean;
   onClick: (node: ItineraryNode) => void;
+  onDelete?: (node: ItineraryNode) => void;
   isFirst?: boolean;
 }
 
-export function TimelineNode({ node, isSelected, onClick, isFirst }: TimelineNodeProps) {
+export function TimelineNode({ node, isSelected, onClick, onDelete, isFirst }: TimelineNodeProps) {
   const Icon = nodeIcons[node.type];
   const borderColor =
     node.status === "pending"
@@ -41,7 +43,7 @@ export function TimelineNode({ node, isSelected, onClick, isFirst }: TimelineNod
       }}
       onClick={() => onClick(node)}
       className={`
-        relative border-l-2 ${borderColor} pl-4 pr-3 py-3 node-interactive
+        relative border-l-2 ${borderColor} pl-4 pr-3 py-3 node-interactive group/node
         ${isSelected ? "bg-secondary" : ""}
         ${hasConflict ? "animate-shiver" : ""}
       `}
@@ -52,7 +54,7 @@ export function TimelineNode({ node, isSelected, onClick, isFirst }: TimelineNod
       {/* Date header for first or new date */}
       {isFirst && (
         <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
-          {node.date}
+          {formatDisplayDate(node.date)}
         </div>
       )}
 
@@ -66,7 +68,18 @@ export function TimelineNode({ node, isSelected, onClick, isFirst }: TimelineNod
         </div>
 
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className="text-xs font-mono tabular-nums">{node.time}</span>
+          <div className="flex items-center gap-1">
+            {onDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(node); }}
+                className="opacity-0 group-hover/node:opacity-100 transition-opacity p-0.5 rounded-sm hover:text-destructive text-muted-foreground"
+                aria-label="Remove"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+            <span className="text-xs font-mono tabular-nums">{node.time}</span>
+          </div>
           {node.duration && (
             <span className="text-[10px] text-muted-foreground font-mono">{node.duration}</span>
           )}

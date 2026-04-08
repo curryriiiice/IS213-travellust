@@ -1,4 +1,5 @@
 import type { ItineraryNode } from "@/types/trip";
+import { parseLocalParts } from "@/lib/date-utils";
 
 /**
  * Raw flight response from flight-management composite service
@@ -20,6 +21,7 @@ interface RawFlight {
   origin?: string;
   destination?: string;
   created_at?: string;
+  deleted?: boolean;
 }
 
 /**
@@ -29,27 +31,6 @@ interface FlightResponse {
   success: boolean;
   data?: RawFlight;
   error?: string;
-}
-
-/**
- * Safely parse datetime string, handling various formats
- */
-function parseDateTime(dateTimeStr: string): Date {
-  // Try parsing as-is
-  let date = new Date(dateTimeStr);
-
-  // If invalid or NaN, try appending 'Z' for UTC
-  if (isNaN(date.getTime())) {
-    date = new Date(`${dateTimeStr}Z`);
-  }
-
-  // If still invalid, return current date as fallback
-  if (isNaN(date.getTime())) {
-    console.warn(`Failed to parse datetime: ${dateTimeStr}`);
-    return new Date();
-  }
-
-  return date;
 }
 
 /**
@@ -76,24 +57,22 @@ function parseCost(costValue: number | string | undefined): number {
 /**
  * Map raw flight data to ItineraryNode format
  */
-function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode {
-  const departureDate = parseDateTime(raw.datetime_departure);
-  const arrivalDate = parseDateTime(raw.datetime_arrival);
+function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode | null {
+  // Filter out soft-deleted flights
+  if (raw.deleted === true) {
+    return null;
+  }
 
-  console.log("Flight mapping:", {
-    departure: raw.datetime_departure,
-    arrival: raw.datetime_arrival,
-    parsedDeparture: departureDate.toISOString(),
-    parsedArrival: arrivalDate.toISOString(),
-  });
+  const { date, time } = parseLocalParts(raw.datetime_departure);
+  const { date: arrivalDateStr, time: arrivalTimeStr } = parseLocalParts(raw.datetime_arrival);
 
-  // Extract date (YYYY-MM-DD) and time (HH:mm)
-  const date = departureDate.toISOString().split("T")[0];
-  const time = departureDate.toTimeString().slice(0, 5);
-  const arrivalTime = arrivalDate.toTimeString().slice(0, 5);
+  // For duration calculation, we can still use native Date parsing since we only care about the delta
+  // and the backend provides consistent offsets.
+  const depDate = new Date(raw.datetime_departure);
+  const arrDate = new Date(raw.datetime_arrival);
 
   // Calculate duration in minutes
-  const durationMs = arrivalDate.getTime() - departureDate.getTime();
+  const durationMs = arrDate.getTime() - depDate.getTime();
   const durationMinutes = Math.round(durationMs / (1000 * 60));
 
   // Handle negative duration (arrival before departure) - might indicate crossing timezone
@@ -133,6 +112,7 @@ function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode {
       datetime_arrival: raw.datetime_arrival,
       origin: raw.origin || "",
       destination: raw.destination || "",
+      trip_id: raw.trip_id || "",
       // Store raw costs for reference
       price_sgd: parseCost(raw.price_sgd).toString(),
       price_usd: parseCost(raw.price_usd).toString(),
@@ -151,21 +131,17 @@ export async function fetchFlightById(flightId: string, tripCurrency: string = "
     const response = await fetch(`/api/flights/${flightId}`);
 
     if (!response.ok) {
-      console.warn(`Failed to fetch flight ${flightId}: ${response.status}`);
       return null;
     }
 
     const json: FlightResponse = await response.json();
 
     if (!json.success || !json.data) {
-      console.warn(`Invalid flight response for ${flightId}`);
       return null;
     }
 
-    console.log("Fetched flight data:", json.data);
     return mapFlightToNode(json.data, tripCurrency);
   } catch (error) {
-    console.error(`Error fetching flight ${flightId}:`, error);
     return null;
   }
 }

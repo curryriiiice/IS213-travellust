@@ -1,53 +1,48 @@
-import { useEffect, useState } from "react";
-import { useNavigate, type NavigateFunction } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { airports } from "@/data/flightData";
-import { hotelCities } from "@/data/hotelData";
-import { fetchCatalogAttractionLocations } from "@/api/attraction";
-import { Compass, Plane, Building2, Map, Users, Shield, Search, User, MapPin } from "lucide-react";
+import { useEffect, useState } from 'react';
+import { useNavigate, type NavigateFunction } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { airports } from '@/data/flightData';
+import { hotelCities } from '@/data/hotelData';
+import { fetchCatalogAttractionLocations } from '@/api/attraction';
+import {
+  Plane,
+  Building2,
+  Map,
+  Users,
+  Shield,
+  Search,
+  MapPin,
+} from 'lucide-react';
+import { Header } from '@/components/Header';
 
-type SearchTab = "flights" | "hotels" | "attractions";
+type SearchTab = 'flights' | 'hotels' | 'attractions';
 
 const Landing = () => {
-  const [activeTab, setActiveTab] = useState<SearchTab>("flights");
+  const [activeTab, setActiveTab] = useState<SearchTab>('flights');
   const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Nav */}
-      <header className="h-12 border-b border-border flex items-center justify-between px-6 bg-card/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <Compass className="w-4 h-4 text-accent" />
-          <span className="text-sm font-medium tracking-tight">TravelLust</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground"
-            onClick={() => navigate("/trips")}
-          >
-            My Trips
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground"
-            onClick={() => navigate("/bookings")}
-          >
-            Booked Tickets
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => navigate("/profile")}
-          >
-            <User className="w-4 h-4" />
-          </Button>
-        </div>
-      </header>
+      <Header>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => navigate('/trips')}
+        >
+          My Trips
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs text-muted-foreground"
+          onClick={() => navigate('/bookings')}
+        >
+          Booked Tickets
+        </Button>
+      </Header>
 
       {/* Hero */}
       <section className="relative overflow-hidden">
@@ -84,33 +79,33 @@ const Landing = () => {
             {/* Tabs */}
             <div className="flex border border-border rounded-sm bg-card overflow-hidden mb-0">
               <button
-                onClick={() => setActiveTab("flights")}
+                onClick={() => setActiveTab('flights')}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-mono uppercase tracking-widest transition-colors ${
-                  activeTab === "flights"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-secondary"
+                  activeTab === 'flights'
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-secondary'
                 }`}
               >
                 <Plane className="w-3.5 h-3.5" />
                 Flights
               </button>
               <button
-                onClick={() => setActiveTab("hotels")}
+                onClick={() => setActiveTab('hotels')}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-mono uppercase tracking-widest transition-colors border-l border-border ${
-                  activeTab === "hotels"
-                    ? "bg-node-hotel text-accent-foreground"
-                    : "text-muted-foreground hover:bg-secondary"
+                  activeTab === 'hotels'
+                    ? 'bg-node-hotel text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-secondary'
                 }`}
               >
                 <Building2 className="w-3.5 h-3.5" />
                 Hotels
               </button>
               <button
-                onClick={() => setActiveTab("attractions")}
+                onClick={() => setActiveTab('attractions')}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-mono uppercase tracking-widest transition-colors border-l border-border ${
-                  activeTab === "attractions"
-                    ? "bg-node-attraction text-accent-foreground"
-                    : "text-muted-foreground hover:bg-secondary"
+                  activeTab === 'attractions'
+                    ? 'bg-node-attraction text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-secondary'
                 }`}
               >
                 <MapPin className="w-3.5 h-3.5" />
@@ -121,16 +116,34 @@ const Landing = () => {
             {/* Inline search form */}
             <div className="border border-t-0 border-border rounded-b-sm bg-card overflow-hidden p-4">
               <AnimatePresence mode="wait">
-                {activeTab === "flights" ? (
-                  <motion.div key="flights" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                {activeTab === 'flights' ? (
+                  <motion.div
+                    key="flights"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
                     <LandingFlightForm navigate={navigate} />
                   </motion.div>
-                ) : activeTab === "hotels" ? (
-                  <motion.div key="hotels" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                ) : activeTab === 'hotels' ? (
+                  <motion.div
+                    key="hotels"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
                     <LandingHotelForm navigate={navigate} />
                   </motion.div>
                 ) : (
-                  <motion.div key="attractions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                  <motion.div
+                    key="attractions"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
                     <LandingAttractionForm navigate={navigate} />
                   </motion.div>
                 )}
@@ -147,31 +160,37 @@ const Landing = () => {
             {[
               {
                 icon: Map,
-                title: "Smart Itineraries",
-                desc: "Auto-generate day-by-day plans based on your flights, hotels, and interests.",
+                title: 'Smart Itineraries',
+                desc: 'Auto-generate day-by-day plans based on your flights, hotels, and interests.',
               },
               {
                 icon: Users,
-                title: "Collaborative Planning",
-                desc: "Invite friends. Everyone edits the same itinerary in real-time.",
+                title: 'Collaborative Planning',
+                desc: 'Invite friends. Everyone edits the same itinerary in real-time.',
               },
               {
                 icon: Shield,
-                title: "Disruption Handling",
-                desc: "Flight delayed? We rebook connections and adjust your entire schedule.",
+                title: 'Disruption Handling',
+                desc: 'Flight delayed? We rebook connections and adjust your entire schedule.',
               },
             ].map((feat, i) => (
               <motion.div
                 key={feat.title}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.3 + i * 0.1, ease: [0.16, 1, 0.3, 1] }}
+                transition={{
+                  duration: 0.5,
+                  delay: 0.3 + i * 0.1,
+                  ease: [0.16, 1, 0.3, 1],
+                }}
                 className="text-center"
               >
                 <div className="w-10 h-10 rounded-sm bg-secondary flex items-center justify-center mx-auto mb-3">
                   <feat.icon className="w-5 h-5 text-accent" />
                 </div>
-                <h3 className="text-sm font-medium tracking-tight">{feat.title}</h3>
+                <h3 className="text-sm font-medium tracking-tight">
+                  {feat.title}
+                </h3>
                 <p className="text-xs text-muted-foreground mt-1 font-mono leading-relaxed">
                   {feat.desc}
                 </p>
@@ -186,14 +205,20 @@ const Landing = () => {
 
 // ── Landing inline forms ────────────────────────
 function LandingFlightForm({ navigate }: { navigate: NavigateFunction }) {
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
-  const [date, setDate] = useState("2026-05-01");
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
+  const [date, setDate] = useState('2026-05-01');
   const [passengers, setPassengers] = useState(1);
   const airportCodes = Object.keys(airports);
 
   const handleSearch = () => {
-    const params = new URLSearchParams({ type: "flights", origin, destination, date, passengers: String(passengers) });
+    const params = new URLSearchParams({
+      type: 'flights',
+      origin,
+      destination,
+      date,
+      passengers: String(passengers),
+    });
     navigate(`/search?${params.toString()}`);
   };
 
@@ -201,25 +226,62 @@ function LandingFlightForm({ navigate }: { navigate: NavigateFunction }) {
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Origin</label>
-          <select value={origin} onChange={(e) => setOrigin(e.target.value)} className="form-select-style">
-            <option value="" disabled>Enter origin</option>
-            {airportCodes.map((c) => <option key={c} value={c}>{c} — {airports[c].name}</option>)}
+          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+            Origin
+          </label>
+          <select
+            value={origin}
+            onChange={(e) => setOrigin(e.target.value)}
+            className="form-select-style"
+          >
+            <option value="" disabled>
+              Enter origin
+            </option>
+            {airportCodes.map((c) => (
+              <option key={c} value={c}>
+                {c} — {airports[c].name}
+              </option>
+            ))}
           </select>
         </div>
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Destination</label>
-          <select value={destination} onChange={(e) => setDestination(e.target.value)} className="form-select-style">
-            <option value="" disabled>Enter destination</option>
-            {airportCodes.map((c) => <option key={c} value={c}>{c} — {airports[c].name}</option>)}
+          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+            Destination
+          </label>
+          <select
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            className="form-select-style"
+          >
+            <option value="" disabled>
+              Enter destination
+            </option>
+            {airportCodes.map((c) => (
+              <option key={c} value={c}>
+                {c} — {airports[c].name}
+              </option>
+            ))}
           </select>
         </div>
       </div>
       <div>
-        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Date</label>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="form-select-style" />
+        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+          Date
+        </label>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="form-select-style"
+        />
       </div>
-      <Button variant="accent" size="sm" className="w-full" onClick={handleSearch} disabled={!origin || !destination}>
+      <Button
+        variant="accent"
+        size="sm"
+        className="w-full"
+        onClick={handleSearch}
+        disabled={!origin || !destination}
+      >
         <Search className="w-3.5 h-3.5" /> Search Flights
       </Button>
     </div>
@@ -227,20 +289,28 @@ function LandingFlightForm({ navigate }: { navigate: NavigateFunction }) {
 }
 
 function LandingHotelForm({ navigate }: { navigate: NavigateFunction }) {
-  const [destination, setDestination] = useState("");
-  const [checkIn, setCheckIn] = useState("2026-04-12");
-  const [checkOut, setCheckOut] = useState("2026-04-15");
+  const [destination, setDestination] = useState('');
+  const [checkIn, setCheckIn] = useState('2026-04-12');
+  const [checkOut, setCheckOut] = useState('2026-04-15');
   const [guests, setGuests] = useState(2);
 
   const handleSearch = () => {
-    const params = new URLSearchParams({ type: "hotels", destination, checkIn, checkOut, guests: String(guests) });
+    const params = new URLSearchParams({
+      type: 'hotels',
+      destination,
+      checkIn,
+      checkOut,
+      guests: String(guests),
+    });
     navigate(`/search?${params.toString()}`);
   };
 
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Destination</label>
+        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+          Destination
+        </label>
         <input
           type="text"
           value={destination}
@@ -251,21 +321,50 @@ function LandingHotelForm({ navigate }: { navigate: NavigateFunction }) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Check-in</label>
-          <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="form-select-style" />
+          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+            Check-in
+          </label>
+          <input
+            type="date"
+            value={checkIn}
+            onChange={(e) => setCheckIn(e.target.value)}
+            className="form-select-style"
+          />
         </div>
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Check-out</label>
-          <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="form-select-style" />
+          <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+            Check-out
+          </label>
+          <input
+            type="date"
+            value={checkOut}
+            onChange={(e) => setCheckOut(e.target.value)}
+            className="form-select-style"
+          />
         </div>
       </div>
       <div className="mb-2">
-        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Guests</label>
-        <select value={guests} onChange={(e) => setGuests(Number(e.target.value))} className="form-select-style">
-          {[1,2,3,4].map((n) => <option key={n} value={n}>{n} {n === 1 ? "guest" : "guests"}</option>)}
+        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+          Guests
+        </label>
+        <select
+          value={guests}
+          onChange={(e) => setGuests(Number(e.target.value))}
+          className="form-select-style"
+        >
+          {[1, 2, 3, 4].map((n) => (
+            <option key={n} value={n}>
+              {n} {n === 1 ? 'guest' : 'guests'}
+            </option>
+          ))}
         </select>
       </div>
-      <Button variant="accent" size="sm" className="w-full" onClick={handleSearch}>
+      <Button
+        variant="accent"
+        size="sm"
+        className="w-full"
+        onClick={handleSearch}
+      >
         <Search className="w-3.5 h-3.5" /> Search Hotels
       </Button>
     </div>
@@ -273,8 +372,8 @@ function LandingHotelForm({ navigate }: { navigate: NavigateFunction }) {
 }
 
 function LandingAttractionForm({ navigate }: { navigate: NavigateFunction }) {
-  const [city, setCity] = useState("");
-  const [date, setDate] = useState("2026-04-12");
+  const [city, setCity] = useState('');
+  const [date, setDate] = useState('2026-04-12');
   const [locations, setLocations] = useState<string[]>([]);
 
   useEffect(() => {
@@ -283,7 +382,7 @@ function LandingAttractionForm({ navigate }: { navigate: NavigateFunction }) {
         const catalogLocations = await fetchCatalogAttractionLocations();
         setLocations(catalogLocations);
       } catch (err) {
-        console.error("Failed to load attraction locations:", err);
+        console.error('Failed to load attraction locations:', err);
         setLocations([]);
       }
     };
@@ -292,15 +391,25 @@ function LandingAttractionForm({ navigate }: { navigate: NavigateFunction }) {
   }, []);
 
   const handleSearch = () => {
-    const params = new URLSearchParams({ type: "attractions", destination: city, date });
+    const params = new URLSearchParams({
+      type: 'attractions',
+      destination: city,
+      date,
+    });
     navigate(`/search?${params.toString()}`);
   };
 
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">City</label>
-        <select value={city} onChange={(e) => setCity(e.target.value)} className="form-select-style">
+        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+          City
+        </label>
+        <select
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          className="form-select-style"
+        >
           <option value="">All cities</option>
           {locations.map((location) => (
             <option key={location} value={location}>
@@ -310,10 +419,22 @@ function LandingAttractionForm({ navigate }: { navigate: NavigateFunction }) {
         </select>
       </div>
       <div>
-        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Date</label>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="form-select-style" />
+        <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">
+          Date
+        </label>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="form-select-style"
+        />
       </div>
-      <Button variant="accent" size="sm" className="w-full" onClick={handleSearch}>
+      <Button
+        variant="accent"
+        size="sm"
+        className="w-full"
+        onClick={handleSearch}
+      >
         <Search className="w-3.5 h-3.5" /> Search Attractions
       </Button>
     </div>

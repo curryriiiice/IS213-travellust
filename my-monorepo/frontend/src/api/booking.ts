@@ -77,20 +77,33 @@ export async function bookFlight(
   return json;
 }
 
+/**
+ * Book an attraction via the book-attractions microservice.
+ *
+ * @param tripId      - UUID of the trip that contains this attraction
+ * @param mainUserId  - UUID of the user initiating the booking
+ * @param ticketHolders - Array of UUIDs for all ticket holders
+ * @param attractionId - UUID of the attraction to book
+ */
 export async function bookAttraction(
   tripId: string,
   mainUserId: string,
+  ticketHolders: string[],
   attractionId: string
 ): Promise<BookAttractionResponse> {
+  const requestBody = {
+    trip_id: tripId,
+    paid_by: mainUserId,
+    user_id: ticketHolders,
+    attraction_id: attractionId,
+  };
+
+  console.log("Booking attraction with payload:", requestBody);
+
   const response = await fetch("/api/book-attractions-service/api/book-attractions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      trip_id: tripId,
-      paid_by: mainUserId,
-      user_id: [mainUserId],
-      attraction_id: attractionId,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   const json = await parseBookingResponse<BookAttractionResponse>(response);
@@ -201,14 +214,25 @@ export interface BookedTicket {
  */
 export async function getUserBookedTickets(userId: string): Promise<BookedTicket[]> {
   try {
-    const response = await fetch(`/api/booked-tickets/api/users/${userId}/booked_tickets`);
+    const endpoint = `/api/booked-tickets/api/users/${userId}/booked_tickets`;
+    console.log("DEBUG: Fetching booked tickets from:", endpoint);
+
+    const response = await fetch(endpoint);
+    console.log("DEBUG: Booked tickets response status:", response.status);
+
     if (!response.ok) {
       console.warn(`Failed to fetch booked tickets for user ${userId}: ${response.status}`);
+      console.warn("DEBUG: Response text:", await response.text());
       return [];
     }
+
     const json: { data: BookedTicket[]; count: number } = await response.json();
+    console.log("DEBUG: Booked tickets raw response:", json);
+
     // Filter out cancelled tickets — treat them as not booked
-    return (json.data ?? []).filter((t) => !t.cancelled);
+    const filtered = (json.data ?? []).filter((t) => !t.cancelled);
+    console.log("DEBUG: Booked tickets after filtering cancelled:", filtered.length);
+    return filtered;
   } catch (err) {
     console.error("getUserBookedTickets error:", err);
     return [];
