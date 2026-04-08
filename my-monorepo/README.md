@@ -1,109 +1,286 @@
-# MyMonorepo
+# ✈️ TravelLust
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+> A full-stack travel planning platform built with a microservices architecture.  
+> Plan trips, search & book flights/hotels/attractions, collaborate with friends, and manage your itinerary — all in one place.
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
+---
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/nx-api/js?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+## Table of Contents
 
-## Generate a library
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Services](#services)
+- [Frontend](#frontend)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [Port Reference](#port-reference)
+- [Project Structure](#project-structure)
 
-```sh
-npx nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
+---
+
+## Overview
+
+TravelLust is an enterprise-grade travel management application developed as part of SMU's IS213 Enterprise Solution Development module. It follows a **microservices architecture** where each domain (flights, hotels, attractions, bookings, trips, notifications, etc.) is an independently deployable service. All services are containerised with Docker and orchestrated via Docker Compose.
+
+**Key features:**
+- 🔍 Search flights, hotels, and attractions via SerpAPI
+- 🗓️ Build and manage trip itineraries with a visual timeline
+- 🤝 Real-time collaborative trip planning
+- 🎟️ Book flights, hotels, and attractions with confirmation notifications
+- 🔔 Event-driven notifications via RabbitMQ
+- 💬 In-app notification feed via Redis + WebSockets
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        React Frontend                           │
+│                   (Vite + React + Tailwind)                     │
+│                       localhost:8080                            │
+└───────┬─────────────┬──────────────┬──────────────┬────────────┘
+        │             │              │              │
+   /api/trips    /api/plan    /api/collab    /api/book-*
+        │             │              │              │
+┌───────▼──────┐ ┌────▼────┐ ┌──────▼──────┐ ┌────▼───────────────┐
+│ trips_atomic │ │  plan   │ │collaboration│ │  book-flight       │
+│   :5001      │ │ :5011   │ │  :5010      │ │  book-hotels       │
+└──────────────┘ └────┬────┘ └─────────────┘ │  book-attractions  │
+                      │                       └────────┬───────────┘
+              ┌───────┼───────┐                        │
+         ┌────▼──┐ ┌──▼───┐ ┌▼──────────┐      ┌─────▼──────┐
+         │flight │ │hotel │ │ saved-    │      │  RabbitMQ  │
+         │mgmt   │ │mgmt  │ │ hotels    │      │  :5672     │
+         │:5005  │ │:5009 │ │ :5008     │      └─────┬──────┘
+         └───┬───┘ └──┬───┘ └───────────┘            │
+         ┌───▼───┐ ┌──▼──────────┐           ┌───────▼──────┐
+         │flight │ │hotel-search │           │notifications │
+         │search │ │wrapper:5007 │           │   :5013      │
+         │:5003  │ └─────────────┘           └──────┬───────┘
+         └───────┘                                  │
+                                             ┌──────▼───┐
+                                             │  Redis   │
+                                             │  :6379   │
+                                             └──────────┘
 ```
 
-## Run tasks
+---
 
-To build the library use:
+## Services
 
-```sh
-npx nx build pkg1
+All microservices live under `apps/` and are **Python/Flask** based unless noted otherwise.
+
+| Service | Port | Description |
+|---|---|---|
+| `trips_atomic` | 5001 | Core atomic CRUD service for trips — stores trip metadata, nodes (flights, hotels, attractions), and collaborators |
+| `attractions` | 5002 | Atomic CRUD service for the attractions catalogue backed by Supabase |
+| `flight-search-wrapper` | 5003 | Thin wrapper around SerpAPI's Google Flights endpoint |
+| `saved-flights` | 5004 | Persists user-saved flight offers to Supabase |
+| `flight-management` | 5005 | **Composite** — orchestrates search, saving, and retrieval of flights |
+| `booked_tickets` | 5006 | Atomic CRUD for confirmed bookings (flights, hotels, attractions) |
+| `hotel-search-wrapper` | 5007 | Thin wrapper around SerpAPI's Google Hotels endpoint |
+| `saved-hotels` | 5008 | Persists user-saved hotel results to Supabase |
+| `hotel-management` | 5009 | **Composite** — orchestrates hotel search, saving, and retrieval |
+| `collaboration_service` | 5010 | Manages trip collaborators and real-time presence via WebSockets |
+| `plan_service` | 5011 | **Composite** — coordinates the full trip planning flow (flights + hotels + savings + trip updates) |
+| `book-hotels` | 5012 | **Composite** — handles the hotel booking flow, updates trip nodes, publishes notifications |
+| `notifications` | 5013 | Consumes RabbitMQ events and delivers in-app notifications; uses Redis for pub/sub |
+| `book-flight` | 5014 | **Composite** — handles the end-to-end flight booking flow |
+| `book-attractions` | 5015 | **Composite** — handles the attraction booking flow |
+
+### Message Broker
+
+| Service | Port | Purpose |
+|---|---|---|
+| RabbitMQ | 5672 / 15672 | Async event bus for booking confirmations → notifications |
+| Redis | 6379 | Notification pub/sub + caching for plan service |
+
+---
+
+## Frontend
+
+| Detail | Value |
+|---|---|
+| Framework | React 18 + TypeScript |
+| Build Tool | Vite |
+| Styling | Tailwind CSS + shadcn/ui |
+| Animations | Framer Motion |
+| Icons | Lucide React |
+| State | TanStack Query + React Context |
+| Routing | React Router v6 |
+| Forms | React Hook Form + Zod |
+| Real-time | Socket.IO Client |
+| Testing | Vitest + React Testing Library |
+
+### Pages
+
+| Route | Page | Description |
+|---|---|---|
+| `/` | `Landing.tsx` | Hero page with search forms |
+| `/search` | `SearchResults.tsx` | Flight, hotel, and attraction search results |
+| `/trips` / `/trips/:id` | `Index.tsx` | Trip itinerary workspace (timeline, map, ledger) |
+| `/item/:type/:id` | `ItemDetail.tsx` | Detailed view of a flight or hotel before booking |
+| `/booking` | `Booking.tsx` | Checkout and payment flow |
+| `/booked` | `BookedTickets.tsx` | Confirmed booking dashboard |
+| `/profile` | `Profile.tsx` | User profile and settings |
+
+---
+
+## Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (v24+)
+- [Node.js](https://nodejs.org/) (v20+) — for frontend development
+- [npm](https://www.npmjs.com/) (v10+)
+
+---
+
+## Getting Started
+
+### 1. Clone the repo
+
+```bash
+git clone <repo-url>
+cd my-monorepo
 ```
 
-To run any task with Nx use:
+### 2. Configure environment variables
 
-```sh
-npx nx <target> <project-name>
+Copy the example env file and fill in your own API keys and Supabase credentials:
+
+```bash
+cp .env.example .env
+# then edit .env with your values
 ```
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+See [Environment Variables](#environment-variables) for a full reference.
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+### 3. Start all backend services
 
-## Versioning and releasing
-
-To version and release the library use
-
-```
-npx nx release
+```bash
+docker compose up --build
 ```
 
-Pass `--dry-run` to see what would happen without actually releasing the library.
+This spins up all 15 microservices plus RabbitMQ and Redis. Wait for all health checks to pass (typically ~40–60 seconds on first boot).
 
-[Learn more about Nx release &raquo;](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+To run in the background:
 
-## Keep TypeScript project references up to date
-
-Nx automatically updates TypeScript [project references](https://www.typescriptlang.org/docs/handbook/project-references.html) in `tsconfig.json` files to ensure they remain accurate based on your project dependencies (`import` or `require` statements). This sync is automatically done when running tasks such as `build` or `typecheck`, which require updated references to function correctly.
-
-To manually trigger the process to sync the project graph dependencies information to the TypeScript project references, run the following command:
-
-```sh
-npx nx sync
+```bash
+docker compose up --build -d
 ```
 
-You can enforce that the TypeScript project references are always in the correct state when running in CI by adding a step to your CI job configuration that runs the following command:
+### 4. Start the frontend
 
-```sh
-npx nx sync:check
+In a separate terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-[Learn more about nx sync](https://nx.dev/reference/nx-commands#sync)
+The app will be available at **http://localhost:8080**.
 
-## Set up CI!
+> The Vite dev server automatically proxies all `/api/*` requests to their respective backend services. See `frontend/vite.config.ts` for the full proxy map.
 
-### Step 1
+---
 
-To connect to Nx Cloud, run the following command:
+## Environment Variables
 
-```sh
-npx nx connect
+All microservices read from a single root `.env` file at the monorepo root. Below is a reference for what each section controls.
+
+```bash
+# ── Redis ────────────────────────────────────────────────────────
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# ── Flight Services ──────────────────────────────────────────────
+FLIGHTS_SERPAPI_KEY=<your-serpapi-key>
+SAVED_FLIGHTS_SUPABASE_URL=<supabase-url>
+SAVED_FLIGHTS_SUPABASE_KEY=<supabase-anon-key>
+
+# ── Hotel Services ───────────────────────────────────────────────
+HOTELS_SERPAPI_KEY=<your-serpapi-key>
+HOTELS_SUPABASE_URL=<supabase-url>
+HOTELS_SUPABASE_KEY=<supabase-anon-key>
+
+# ── Attractions Service ──────────────────────────────────────────
+ATTRACTIONS_SUPABASE_URL=<supabase-url>
+ATTRACTIONS_SUPABASE_KEY=<supabase-anon-key>
+
+# ── Booked Tickets Service ───────────────────────────────────────
+BOOKED_TICKETS_SUPABASE_URL=<supabase-url>
+BOOKED_TICKETS_SUPABASE_KEY=<supabase-anon-key>
+
+# ── Trips Atomic Service ─────────────────────────────────────────
+TRIPS_SUPABASE_URL=<supabase-url>
+TRIPS_SUPABASE_KEY=<supabase-anon-key>
 ```
 
-Connecting to Nx Cloud ensures a [fast and scalable CI](https://nx.dev/ci/intro/why-nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
+> **Note:** The Collaboration Service reuses the Trips Supabase credentials for user access verification.
 
-- [Remote caching](https://nx.dev/ci/features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/ci/features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/ci/features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/ci/features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+---
 
-### Step 2
+## Port Reference
 
-Use the following command to configure a CI workflow for your workspace:
+| Port | Service |
+|---|---|
+| **8080** | Frontend (Vite dev server) |
+| **5001** | trips_atomic |
+| **5002** | attractions |
+| **5003** | flight-search-wrapper |
+| **5004** | saved-flights |
+| **5005** | flight-management |
+| **5006** | booked_tickets |
+| **5007** | hotel-search-wrapper |
+| **5008** | saved-hotels |
+| **5009** | hotel-management |
+| **5010** | collaboration_service |
+| **5011** | plan_service |
+| **5012** | book-hotels |
+| **5013** | notifications |
+| **5014** | book-flight |
+| **5015** | book-attractions |
+| **5672** | RabbitMQ (AMQP) |
+| **6379** | Redis |
+| **15672** | RabbitMQ Management UI |
 
-```sh
-npx nx g ci-workflow
+---
+
+## Project Structure
+
 ```
-
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Useful links
-
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/nx-api/js?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+my-monorepo/
+├── apps/                         # All backend microservices
+│   ├── attractions/              # Attractions atomic service
+│   ├── book-attractions/         # Composite: attraction booking
+│   ├── book-flight/              # Composite: flight booking
+│   ├── book-hotels/              # Composite: hotel booking
+│   ├── booked_tickets/           # Booked tickets atomic service
+│   ├── collaboration_service/    # Real-time collaboration
+│   ├── flight-management/        # Composite: flight management
+│   ├── flight-search-wrapper/    # SerpAPI flight search
+│   ├── hotel-management/         # Composite: hotel management
+│   ├── hotel-search-wrapper/     # SerpAPI hotel search
+│   ├── notifications/            # Event-driven notifications
+│   ├── plan_service/             # Composite: trip planning
+│   ├── saved-flights/            # Saved flights atomic service
+│   ├── saved-hotels/             # Saved hotels atomic service
+│   └── trips_atomic/             # Trips atomic service
+├── frontend/                     # React + Vite frontend
+│   ├── src/
+│   │   ├── api/                  # API client functions
+│   │   ├── components/           # Reusable UI components
+│   │   ├── contexts/             # React Context providers
+│   │   ├── data/                 # Data fetching & mappers
+│   │   ├── hooks/                # Custom React hooks
+│   │   ├── pages/                # Route-level page components
+│   │   ├── types/                # TypeScript type definitions
+│   │   └── utils/                # Utility functions
+│   └── vite.config.ts            # Vite config + API proxy map
+├── packages/                     # Shared internal packages
+├── docker-compose.yml            # Full stack orchestration
+├── .env                          # Root env file for all services
+└── nx.json                       # Nx monorepo configuration
+```
