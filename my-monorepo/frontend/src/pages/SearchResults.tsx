@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,7 @@ import {
 import type { Trip } from "@/types/trip";
 import { toast } from "@/hooks/use-toast";
 import { saveFlight, saveHotel, saveAttraction } from "@/api/plan";
+import { isAuthenticated } from "@/lib/auth";
 
 type SearchTab = "flights" | "hotels" | "attractions";
 type FlightSortKey = "price" | "duration" | "departure";
@@ -60,7 +61,16 @@ const getAttractionLocationFilter = (location: string) => location.trim();
 const SearchResults = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const initialTab = (searchParams.get("type") as SearchTab) || "flights";
+
+  const requireAuth = (fn: () => void) => {
+    if (!isAuthenticated()) {
+      navigate("/login", { state: { from: location } });
+      return;
+    }
+    fn();
+  };
 
   const [activeTab, setActiveTab] = useState<SearchTab>(initialTab);
   const [isLoading, setIsLoading] = useState(false);
@@ -587,7 +597,7 @@ const SearchResults = () => {
                     isCheapest={flight.price === flightMinPrice}
                     isExpanded={fExpandedId === flight.id}
                     onToggle={() => setFExpandedId(fExpandedId === flight.id ? null : flight.id)}
-                    onAddToTrip={() => setTripPickerItem({ type: "flight", data: flight })}
+                    onAddToTrip={() => requireAuth(() => setTripPickerItem({ type: "flight", data: flight }))}
                     onViewDetails={() => navigate("/details", { state: { itemType: "flight", data: flight } })}
                     passengers={fPax}
                   />
@@ -617,7 +627,7 @@ const SearchResults = () => {
                     hotel={hotel}
                     nights={hNights}
                     isCheapest={hotel.price === hotelMinPrice}
-                    onAddToTrip={() => setTripPickerItem({ type: "hotel", data: hotel })}
+                    onAddToTrip={() => requireAuth(() => setTripPickerItem({ type: "hotel", data: hotel }))}
                     onViewDetails={() => navigate("/details", { state: { itemType: "hotel", data: hotel } })}
                   />
                 ))}
@@ -639,7 +649,7 @@ const SearchResults = () => {
                   <AttractionResultCard
                     key={attraction.id}
                     attraction={attraction}
-                    onAddToTrip={() => setTripPickerItem({ type: "attraction", data: attraction })}
+                    onAddToTrip={() => requireAuth(() => setTripPickerItem({ type: "attraction", data: attraction }))}
                     onViewDetails={() => navigate("/details", { state: { itemType: "attraction", data: attraction } })}
                   />
                 ))}
