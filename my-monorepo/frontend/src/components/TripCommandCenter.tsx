@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
 import { DetailPane } from "./DetailPane";
 import { LedgerPane } from "./LedgerPane";
 import { BudgetBar } from "./BudgetBar";
 import { CollaboratorAvatars } from "./CollaboratorAvatars";
-import type { Trip, ItineraryNode } from "@/types/trip";
+import type { Trip, ItineraryNode, Collaborator } from "@/types/trip";
 import { ChevronLeft, Settings, Share2, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
@@ -20,6 +20,8 @@ import {
 } from "@/api/plan";
 import { useCollabSocket } from "@/hooks/useCollabSocket";
 import { getCurrentUserId } from "@/lib/auth";
+import { fetchAllClients } from "@/api/collaborator";
+import { getInitials, getColorFromUuid } from "@/lib/collaborator-utils";
 
 interface TripCommandCenterProps {
   trip: Trip;
@@ -72,6 +74,36 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
   );
 
   const { activeUsers, activityLog } = useCollabSocket(trip.id, CURRENT_USER_ID, handleTripUpdate);
+
+  const [resolvedCollaborators, setResolvedCollaborators] = useState<Collaborator[]>([]);
+
+  useEffect(() => {
+    if (!trip.member_ids?.length) return;
+    fetchAllClients()
+      .then((clients) => {
+        const collaborators = trip.member_ids!
+          .map((id) => {
+            const client = clients.find((c) => c.client_uuid === id);
+            return client
+              ? {
+                  id: client.client_uuid,
+                  name: client.name,
+                  initials: getInitials(client.name),
+                  color: getColorFromUuid(client.client_uuid),
+                  isOnline: false,
+                }
+              : null;
+          })
+          .filter((c): c is Collaborator => c !== null);
+        setResolvedCollaborators(collaborators);
+      })
+      .catch(() => {});
+  }, [trip.member_ids]);
+
+  const collaboratorsWithStatus = useMemo(
+    () => resolvedCollaborators.map((c) => ({ ...c, isOnline: activeUsers.includes(c.id) })),
+    [resolvedCollaborators, activeUsers]
+  );
 
   const handleDeleteNode = useCallback(
     async (node: ItineraryNode) => {
@@ -212,7 +244,7 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <CollaboratorAvatars collaborators={trip.collaborators} />
+          <CollaboratorAvatars collaborators={collaboratorsWithStatus} />
           <Button
             variant="ghost"
             size="sm"
@@ -304,6 +336,7 @@ export function TripCommandCenter({ trip, onBack }: TripCommandCenterProps) {
           <DetailPane
             node={selectedNode}
             trip={trip}
+            onClose={() => setSelectedNode(null)}
             onDelete={selectedNode?.status !== "confirmed" ? handleDeleteNode : undefined}
             onNodeBooked={(nodeId) =>
               setEnrichedNodes((prev) =>

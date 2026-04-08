@@ -202,6 +202,15 @@ const Index = () => {
 
     try {
       await updateTripMembers(collabTripId, newMemberIds);
+      fetch(`/api/collab/trip/${collabTripId}/event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'MEMBER_ADDED',
+          user_id: CURRENT_USER_ID,
+          data: { name: collab.name, member_id: collab.id },
+        }),
+      }).catch(() => {});
       toast({
         title: 'Collaborator added',
         description: `${collab.name} joined the trip`,
@@ -245,6 +254,16 @@ const Index = () => {
 
     try {
       await updateTripMembers(collabTripId, newMemberIds);
+      const removedClient = availableClients.find((c) => c.client_uuid === collabId);
+      fetch(`/api/collab/trip/${collabTripId}/event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'MEMBER_REMOVED',
+          user_id: CURRENT_USER_ID,
+          data: { name: removedClient?.name ?? collabId, member_id: collabId },
+        }),
+      }).catch(() => {});
       toast({ title: 'Collaborator removed' });
     } catch (err) {
       // Revert on error

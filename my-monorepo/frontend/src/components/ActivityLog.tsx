@@ -29,8 +29,8 @@ const EVENT_ICONS: Record<string, string> = {
   ATTRACTION_ADDED: "📍",
   ATTRACTION_UPDATED: "📍",
   ATTRACTION_DELETED: "📍",
-  user_joined: "👤",
-  user_left: "👤",
+  MEMBER_ADDED: "👤",
+  MEMBER_REMOVED: "👤",
 };
 
 export function ActivityLog({ entries, collaborators }: ActivityLogProps) {
