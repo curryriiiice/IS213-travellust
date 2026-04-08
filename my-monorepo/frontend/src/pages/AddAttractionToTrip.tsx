@@ -11,8 +11,9 @@ import { saveCatalogAttraction } from '@/api/plan';
 import type { AttractionOffer } from '@/data/attractionData';
 import type { Trip } from '@/types/trip';
 import { Header } from '@/components/Header';
+import { getCurrentUserId } from '@/lib/auth';
 
-const CURRENT_USER_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+const CURRENT_USER_ID = getCurrentUserId();
 
 type AddAttractionState = {
   itemType: 'attraction';

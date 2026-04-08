@@ -35,6 +35,7 @@ import type { AttractionOffer } from "@/data/attractionData";
 import type { ItineraryNode } from "@/types/trip";
 import { bookAttraction, bookFlight, cancelAttractionBooking, bookHotel } from "@/api/booking";
 import { deletePlannedAttraction, updatePlannedAttraction } from "@/api/plan";
+import { getCurrentUserId } from "@/lib/auth";
 
 // Helper to convert ItineraryNode to HotelOffer when coming from booked tickets
 function convertToHotelOffer(node: ItineraryNode): HotelOffer {
@@ -88,7 +89,7 @@ function convertToFlightOffer(node: ItineraryNode): FlightOffer {
   };
 }
 
-const MAIN_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+const MAIN_USER_ID = getCurrentUserId();
 
 function addMinutesToTime(time: string, minutesToAdd: number): string {
   const [hours, minutes] = time.split(":").map(Number);

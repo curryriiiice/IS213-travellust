@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { getCurrentUserId } from '@/lib/auth';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -49,7 +50,7 @@ const Index = () => {
   const [collabTripId, setCollabTripId] = useState<string | null>(null);
   const [newTripOpen, setNewTripOpen] = useState(false);
 
-  const CURRENT_USER_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const CURRENT_USER_ID = getCurrentUserId();
 
   useEffect(() => {
     setIsLoading(true);
@@ -92,7 +93,7 @@ const Index = () => {
   const [clientsError, setClientsError] = useState<string | null>(null);
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<
     Set<string>
-  >(new Set([CURRENT_USER_ID]));
+  >(new Set([getCurrentUserId()]));
 
   // Fetch collaborators when the create trip dialog or collab manager opens
   useEffect(() => {
@@ -142,7 +143,7 @@ const Index = () => {
     setTripEndDate(undefined);
     setTripBudget('');
     setTripCurrency('USD');
-    setSelectedCollaboratorIds(new Set([CURRENT_USER_ID]));
+    setSelectedCollaboratorIds(new Set([getCurrentUserId()]));
   };
 
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
@@ -401,7 +402,23 @@ const Index = () => {
             </div>
           )}
 
-          {!isLoading && (
+          {!isLoading && trips.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-16 space-y-3"
+            >
+              <Compass className="w-12 h-12 text-muted-foreground/40 mx-auto" />
+              <p className="text-sm text-muted-foreground">
+                You have no trips at the moment. The world is your oyster, go wild!
+              </p>
+              <Button variant="outline" size="sm" onClick={() => setNewTripOpen(true)}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Create Your First Trip
+              </Button>
+            </motion.div>
+          )}
+
+          {!isLoading && trips.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {trips.map((trip) => (
                 <div key={trip.id} className="relative group">

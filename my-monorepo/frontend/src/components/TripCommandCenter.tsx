@@ -23,6 +23,7 @@ import {
 } from "@/api/plan";
 import { useCollabSocket } from "@/hooks/useCollabSocket";
 import type { AttractionOffer } from "@/data/attractionData";
+import { getCurrentUserId } from "@/lib/auth";
 
 interface TripCommandCenterProps {
   trip: Trip;
@@ -30,7 +31,7 @@ interface TripCommandCenterProps {
   onUpdateTrip?: (trip: Trip) => void;
 }
 
-const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+const CURRENT_USER_ID = getCurrentUserId();
 
 export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCenterProps) {
   const [selectedNode, setSelectedNode] = useState<ItineraryNode | null>(null);

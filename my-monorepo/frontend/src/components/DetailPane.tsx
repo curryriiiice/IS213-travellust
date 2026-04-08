@@ -15,8 +15,9 @@ import { toast } from "@/hooks/use-toast";
 import { Clock, Shield, Check, Loader2, Users, Trash2 } from "lucide-react";
 import { bookAttraction, bookFlight, bookHotel, cancelAttractionBooking } from "@/api/booking";
 import { updatePlannedAttraction } from "@/api/plan";
+import { getCurrentUserId } from "@/lib/auth";
 
-const MAIN_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+const MAIN_USER_ID = getCurrentUserId();
 
 function addMinutesToTime(time: string, minutesToAdd: number): string {
   const [hours, minutes] = time.split(":").map(Number);

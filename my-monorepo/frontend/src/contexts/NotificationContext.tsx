@@ -37,7 +37,8 @@ const COLLAB_URL = "http://localhost:5010";
 const NOTIFICATIONS_API_URL = "/api/notifications";
 
 // Hardcoded user ID - same as used in other parts of the app
-const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+import { getCurrentUserId } from "@/lib/auth";
+const CURRENT_USER_ID = getCurrentUserId();
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);

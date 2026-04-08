@@ -38,7 +38,7 @@ import {
 import type { Trip } from "@/types/trip";
 import { toast } from "@/hooks/use-toast";
 import { saveFlight, saveHotel, saveAttraction } from "@/api/plan";
-import { isAuthenticated } from "@/lib/auth";
+import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
 
 type SearchTab = "flights" | "hotels" | "attractions";
 type FlightSortKey = "price" | "duration" | "departure";
@@ -121,7 +121,7 @@ const SearchResults = () => {
   const [newTripBudget, setNewTripBudget] = useState("");
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
 
-  const CURRENT_USER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+  const CURRENT_USER_ID = getCurrentUserId();
 
   const fetchUserTrips = async () => {
     setIsLoadingTrips(true);
