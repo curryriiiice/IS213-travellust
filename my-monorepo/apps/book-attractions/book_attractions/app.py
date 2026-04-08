@@ -84,10 +84,10 @@ def _validate_trip_membership(trip_id: str, user_ids: list, trips_client: TripsC
             f"{trip_id}: {', '.join(missing_users)}."
         )
 
-
+# tested booking failure
 def _should_fail_booking(random_value: float | None = None) -> bool:
     value = random.random() if random_value is None else random_value
-    return math.floor(value * 3) == 0
+    return True
 
 
 def _validate_booked_ticket_record(
