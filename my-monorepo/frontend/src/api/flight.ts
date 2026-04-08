@@ -20,6 +20,7 @@ interface RawFlight {
   origin?: string;
   destination?: string;
   created_at?: string;
+  deleted?: boolean;
 }
 
 /**
@@ -76,7 +77,12 @@ function parseCost(costValue: number | string | undefined): number {
 /**
  * Map raw flight data to ItineraryNode format
  */
-function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode {
+function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode | null {
+  // Filter out soft-deleted flights
+  if (raw.deleted === true) {
+    return null;
+  }
+
   const departureDate = parseDateTime(raw.datetime_departure);
   const arrivalDate = parseDateTime(raw.datetime_arrival);
 
@@ -85,6 +91,7 @@ function mapFlightToNode(raw: RawFlight, tripCurrency: string): ItineraryNode {
     arrival: raw.datetime_arrival,
     parsedDeparture: departureDate.toISOString(),
     parsedArrival: arrivalDate.toISOString(),
+    deleted: raw.deleted,
   });
 
   // Extract date (YYYY-MM-DD) and time (HH:mm)

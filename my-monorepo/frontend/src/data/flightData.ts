@@ -14,6 +14,7 @@ export interface FlightOffer {
   departureTimeConverted: string;
   arrivalTime: string;
   arrivalTimeConverted: string;
+  arrivalDateTime: string; // Full datetime for API calls (YYYY-MM-DD HH:MM:SS)
   duration: string;
   durationMinutes: number;
   aircraft: string;
@@ -189,6 +190,9 @@ export function mapApiFlightToOffer(
   const depTimeConverted = originAirport.offset === destAirport.offset ? "" : formatTimeAtOffset(depMs, destAirport.offset);
   const arrTimeConverted = originAirport.offset === destAirport.offset ? "" : formatTimeAtOffset(arrMs, originAirport.offset);
 
+  // Store the full datetime for API calls (convert space to T for ISO format)
+  const arrivalDateTime = apiFlight.datetime_arrival.replace(" ", "T");
+
   return {
     id: generateId(),
     airline: apiFlight.airline,
@@ -202,6 +206,7 @@ export function mapApiFlightToOffer(
     departureTimeConverted: depTimeConverted,
     arrivalTime: localArrTime,
     arrivalTimeConverted: arrTimeConverted,
+    arrivalDateTime, // Full datetime for API calls
     duration,
     durationMinutes,
     aircraft: apiFlight.aircraft_type,

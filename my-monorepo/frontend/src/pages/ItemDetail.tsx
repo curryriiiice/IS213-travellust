@@ -75,6 +75,7 @@ function convertToFlightOffer(node: ItineraryNode): FlightOffer {
     departureTimeConverted: node.time,
     arrivalTime: "", // Calculated from departure + duration
     arrivalTimeConverted: "",
+    arrivalDateTime: node.details?.datetime_arrival?.replace(" ", "T") || "", // Use API datetime if available
     duration: node.duration || "",
     durationMinutes: 0, // Extracted from duration string
     aircraft: node.details?.aircraft_type || "",
