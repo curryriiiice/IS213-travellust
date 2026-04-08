@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BookingsProvider } from "@/contexts/BookingsContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+
 import Landing from "./pages/Landing.tsx";
 import Index from "./pages/Index.tsx";
 import SearchResults from "./pages/SearchResults.tsx";
@@ -17,8 +18,10 @@ import BookedTickets from "./pages/BookedTickets.tsx";
 import AddAttractionToTrip from "./pages/AddAttractionToTrip.tsx";
 import Login from "./pages/Login";
 import Logout from "./pages/Logout";
-import ProtectedRoute from "./components/ProtectedRoute";
 import Signup from "./pages/SignUp";
+
+// change this line only if your ProtectedRoute file is in /pages instead of /components
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +40,7 @@ const App = () => (
                 <Route path="/login" element={<Login />} />
                 <Route path="/search" element={<SearchResults />} />
                 <Route path="/details" element={<ItemDetail />} />
+                <Route path="/logout" element={<Logout />} />
 
                 <Route
                   path="/trips"
@@ -83,10 +87,7 @@ const App = () => (
                   }
                 />
 
-                <Route path="/logout" element={<Logout />} />
-                  
                 <Route path="*" element={<NotFound />} />
-                
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
@@ -97,4 +98,3 @@ const App = () => (
 );
 
 export default App;
-

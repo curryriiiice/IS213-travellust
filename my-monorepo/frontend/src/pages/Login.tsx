@@ -1,19 +1,40 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { login } from "../lib/auth";
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [userId, setUserId] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem("user", JSON.stringify({ email, name: email.split("@")[0], id: userId.trim() }));
-    localStorage.setItem("token", "test-token");
-    const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/trips";
-    navigate(from, { replace: true });
+    setError("");
+    setLoading(true);
+
+    try {
+      const result = await login(email, password);
+
+      if (!result.success) {
+        setError(result.message || "Invalid email or password");
+        return;
+      }
+
+      const from =
+        (location.state as { from?: { pathname: string } })?.from?.pathname ||
+        "/trips";
+
+      navigate(from, { replace: true });
+    } catch (err) {
+      console.error(err);
+      setError("Could not connect to server");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -71,31 +92,27 @@ export default function Login() {
               required
               className="w-full h-8 bg-secondary border border-input rounded-sm px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent transition-colors"
             />
-
-            <a
-              href="#"
-              className="block text-right text-xs text-accent hover:opacity-80 mt-1.5 transition-opacity"
-            >
-              Forgot password?
-            </a>
           </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
 
           <button
             type="submit"
-            className="w-full h-8 bg-accent hover:opacity-90 active:scale-[0.99] text-accent-foreground text-xs font-medium rounded-sm transition-all"
+            disabled={loading}
+            className="w-full h-8 bg-accent hover:opacity-90 active:scale-[0.99] text-accent-foreground text-xs font-medium rounded-sm transition-all disabled:opacity-60"
           >
-            Log in
+            {loading ? "Logging in..." : "Log in"}
           </button>
         </form>
 
         <p className="text-center text-xs text-muted-foreground mt-5">
           Don&apos;t have an account?{" "}
-          <a
-            href="/signup"
+          <Link
+            to="/signup"
             className="text-accent hover:opacity-80 transition-opacity"
           >
             Sign up
-          </a>
+          </Link>
         </p>
       </div>
     </div>
