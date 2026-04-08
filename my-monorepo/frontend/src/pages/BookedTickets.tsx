@@ -262,9 +262,6 @@ const BookedTickets = () => {
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(-1)}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
             <div className="flex items-center gap-2">
               <Ticket className="w-5 h-5 text-accent" />
               <h1 className="text-xl font-semibold tracking-tight">Booked Tickets</h1>

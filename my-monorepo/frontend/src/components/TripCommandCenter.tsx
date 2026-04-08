@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { formatDisplayDate, formatFullDate } from "@/lib/date-utils";
 import { useNavigate } from "react-router-dom";
 import { TimelineNode } from "./TimelineNode";
@@ -272,16 +272,19 @@ export function TripCommandCenter({ trip, onBack, onUpdateTrip }: TripCommandCen
   const nodesToDisplay = isEnriching ? trip.nodes : enrichedNodes;
   console.log("Displaying nodes:", nodesToDisplay.length, "isEnriching:", isEnriching);
 
-  // Update parent with current total cost when nodes change
+  // Keep stable refs so the effect below doesn't re-run when these change
+  const tripRef = useRef(trip);
+  tripRef.current = trip;
+  const onUpdateTripRef = useRef(onUpdateTrip);
+  onUpdateTripRef.current = onUpdateTrip;
+
+  // Update parent with current total cost when nodes change (refs prevent infinite loop)
   useEffect(() => {
-    if (onUpdateTrip && !isEnriching) {
+    if (onUpdateTripRef.current && !isEnriching) {
       const totalSpent = nodesToDisplay.reduce((sum, node) => sum + (node.cost || 0), 0);
-      onUpdateTrip({
-        ...trip,
-        spent: totalSpent,
-      });
+      onUpdateTripRef.current({ ...tripRef.current, spent: totalSpent });
     }
-  }, [nodesToDisplay, isEnriching, trip, onUpdateTrip]);
+  }, [nodesToDisplay, isEnriching]);
 
   // Group nodes by date
   const nodesByDate = nodesToDisplay.reduce(
